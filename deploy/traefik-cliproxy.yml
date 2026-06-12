@@ -1,0 +1,24 @@
+# Traefik dynamic config — Docker shim on host port 8320.
+# Written automatically by scripts/setup-vps-traefik.sh
+http:
+  routers:
+    cliproxy-cursor-router-http:
+      rule: Host(`cliproxy.yourdomain.com`)
+      service: cliproxy-cursor-service
+      middlewares:
+        - redirect-to-https
+      entryPoints:
+        - web
+    cliproxy-cursor-router-https:
+      rule: Host(`cliproxy.yourdomain.com`)
+      service: cliproxy-cursor-service
+      entryPoints:
+        - websecure
+      tls:
+        certResolver: letsencrypt
+  services:
+    cliproxy-cursor-service:
+      loadBalancer:
+        servers:
+          - url: http://172.17.0.1:8320
+        passHostHeader: true

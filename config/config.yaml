@@ -1,0 +1,53 @@
+# Docker / VPS — synced from ~/.cli-proxy-api/merged-config.yaml
+host: "0.0.0.0"
+port: 8318
+auth-dir: "/data/auth"
+api-keys:
+  - dummy
+amp-restrict-management-to-localhost: true
+amp-upstream-url: https://ampcode.com
+debug: false
+generative-language-api-key: []
+logging-to-file: false
+oauth-excluded-models:
+  antigravity:
+    - '*'
+  codex:
+    - '*'
+  gemini-cli:
+    - '*'
+  github-copilot:
+    - '*'
+  kimi:
+    - '*'
+  qwen:
+    - '*'
+oauth-model-alias:
+  claude:
+    - alias: ak-claude-sonnet-4.6
+      name: claude-sonnet-4-6
+    - alias: ak-claude-sonnet-4.5
+      name: claude-sonnet-4-5-20250929
+    - alias: ak-claude-opus-4.7
+      name: claude-opus-4-7
+    - alias: ak-claude-opus4-7
+      name: claude-opus-4-7
+    - alias: ak-claude-opus-4.8
+      name: claude-opus-4-8
+    - alias: ak-claude-opus4-8
+      name: claude-opus-4-8
+    - alias: ak-claude-opus-4.6
+      name: claude-opus-4-6
+    - alias: ak-claude-haiku-4.5
+      name: claude-haiku-4-5-20251001
+proxy-url: ''
+quota-exceeded:
+  switch-preview-model: true
+  switch-project: true
+remote-management:
+  allow-remote: false
+  secret-key: "CHANGE_ME_GENERATE_BCRYPT_SECRET"
+request-retry: 3
+request-timeout: 10m
+request-log: true
+usage-statistics-enabled: true

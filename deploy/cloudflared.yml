@@ -1,0 +1,9 @@
+# Optional: Cloudflare named tunnel (legacy Mac-local setup).
+# Prefer VPS Docker deploy — see docs/setup-from-scratch.md
+tunnel: YOUR_TUNNEL_UUID
+credentials-file: $HOME/.cloudflared/YOUR_TUNNEL_UUID.json
+
+ingress:
+  - hostname: cliproxy.yourdomain.com
+    service: http://localhost:8320
+  - service: http_status:404

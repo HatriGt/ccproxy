@@ -1,0 +1,51 @@
+# ccproxy — CLIProxyAPI + Cursor shim for Dokploy / VPS.
+# Point Traefik/Dokploy domain → cursor-shim:8320
+# Cursor: https://<PUBLIC_HOSTNAME>/v1  API key: CLIPROXY_API_KEY from .env
+
+name: ${COMPOSE_PROJECT_NAME:-ccproxy}
+
+services:
+  cli-proxy-api:
+    build:
+      context: .
+      dockerfile: images/cli-proxy-api/Dockerfile
+      args:
+        CLIPROXY_UPSTREAM_TAG: ${CLIPROXY_IMAGE_TAG:-v7.1.63}
+    image: ${CLIPROXY_API_IMAGE:-ccproxy-cli-proxy-api:local}
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ./config/config.yaml:/CLIProxyAPI/config.yaml:ro
+      - cliproxy-auth:/data/auth
+    expose:
+      - "8318"
+    networks:
+      - ccproxy
+
+  cursor-shim:
+    build:
+      context: .
+      dockerfile: images/cursor-shim/Dockerfile
+    image: ${CURSOR_SHIM_IMAGE:-ccproxy-cursor-shim:local}
+    restart: unless-stopped
+    env_file:
+      - .env
+    depends_on:
+      - cli-proxy-api
+    environment:
+      CURSOR_SHIM_HOST: ${CURSOR_SHIM_HOST:-0.0.0.0}
+      CURSOR_SHIM_PORT: ${CURSOR_SHIM_PORT:-8320}
+      CLIPROXY_UPSTREAM: ${CLIPROXY_UPSTREAM:-http://cli-proxy-api:8318}
+    ports:
+      # Traefik (Dokploy) reaches host via 172.17.0.1:8320
+      - "8320:8320"
+    networks:
+      - ccproxy
+
+volumes:
+  cliproxy-auth:
+
+networks:
+  ccproxy:
+    driver: bridge

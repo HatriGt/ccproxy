@@ -1,0 +1,5 @@
+# Local smoke test — publish shim on host :8320
+services:
+  cursor-shim:
+    ports:
+      - "8320:8320"

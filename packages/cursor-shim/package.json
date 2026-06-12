@@ -1,0 +1,14 @@
+{
+  "name": "@ccproxy/cursor-shim",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Cursor Agent ↔ CLIProxyAPI OpenAI format shim",
+  "main": "shim.mjs",
+  "scripts": {
+    "start": "node shim.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
