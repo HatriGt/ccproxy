@@ -23,14 +23,30 @@ Cursor → https://cliproxy.yourdomain.com/v1
 | [docs/dokploy-traefik.md](./docs/dokploy-traefik.md) | VPS routing |
 | [docs/operations.md](./docs/operations.md) | Deploy, troubleshoot |
 
+## Shell shortcuts (zsh)
+
+```bash
+./scripts/install-shell.sh   # once: adds ccproxy + aliases to ~/.zshrc
+source ~/.zshrc
+
+cch      # health check
+ccs      # status
+ccr      # Claude re-login
+ccd      # redeploy
+ccu      # print Cursor URL
+```
+
+See [docs/user-guide.md](./docs/user-guide.md).
+
 ## Quick start
 
 ```bash
 git clone https://github.com/HatriGt/ccproxy.git
 cd ccproxy
 cp .env.example .env    # edit hostname, VPS SSH, secrets
-./scripts/deploy-to-vps.sh
-./scripts/claude-relogin.sh   # if OAuth not copied from Mac
+./scripts/install-shell.sh
+ccproxy deploy
+ccproxy relogin         # if OAuth not copied from Mac
 ```
 
 **Cursor:** Override OpenAI Base URL = `$CURSOR_BASE_URL`, API key = `$CLIPROXY_API_KEY`, Anthropic OFF.

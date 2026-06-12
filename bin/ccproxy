@@ -1,0 +1,121 @@
+#!/usr/bin/env bash
+# ccproxy CLI — short commands for daily use.
+# Usage: ccproxy <command>   (or aliases: cch, ccs, ccr, … after install-shell)
+set -euo pipefail
+
+_ccproxy_resolve_home() {
+  if [[ -n "${CCPROXY_HOME:-}" && -d "${CCPROXY_HOME}/scripts" ]]; then
+    echo "$CCPROXY_HOME"
+    return 0
+  fi
+  local here bin
+  here="$(cd "$(dirname "$0")" && pwd)"
+  if [[ -f "${here%/bin}/scripts/health-check.sh" ]]; then
+    echo "${here%/bin}"
+    return 0
+  fi
+  if [[ -f "${here}/scripts/health-check.sh" ]]; then
+    echo "$here"
+    return 0
+  fi
+  local default="/Users/Common/ProjectsRepo/ccproxy"
+  [[ -d "${default}/scripts" ]] || default="${HOME}/ProjectsRepo/ccproxy"
+  if [[ -d "${default}/scripts" ]]; then
+    echo "$default"
+    return 0
+  fi
+  echo "ERROR: cannot find ccproxy repo. Set CCPROXY_HOME." >&2
+  exit 1
+}
+
+CCPROXY_HOME="$(_ccproxy_resolve_home)"
+SCRIPTS="${CCPROXY_HOME}/scripts"
+
+# shellcheck source=/dev/null
+source "${SCRIPTS}/load-env.sh"
+
+usage() {
+  cat <<EOF
+ccproxy — Cursor + Claude proxy on VPS
+
+Usage: ccproxy <command>
+
+Commands:
+  health, h       Test public URL (models + chat)
+  status, st      Auth files + health on VPS
+  relogin, rl     Claude OAuth re-login on VPS
+  copy-auth, ca   Copy claude-*.json from Mac → VPS
+  deploy, d       Full redeploy to VPS
+  build, b        Build Docker images locally
+  url             Print Cursor base URL (copy/paste)
+  env             Show key settings
+  ssh             SSH to VPS (cd /opt/ccproxy)
+  logs            Tail docker logs on VPS
+  restart         Restart stack on VPS
+  help            This help
+
+Zsh shortcuts (after ./scripts/install-shell.sh):
+  ccp             ccproxy
+  cch             ccproxy health
+  ccs             ccproxy status
+  ccr             ccproxy relogin
+  ccd             ccproxy deploy
+
+Repo: ${CCPROXY_HOME}
+Cursor URL: \${CURSOR_BASE_URL:-https://cliproxy.yourdomain.com/v1}
+EOF
+}
+
+cmd="${1:-help}"
+shift || true
+
+case "$cmd" in
+  help|-h|--help)
+    usage
+    ;;
+  health|h)
+    exec "${SCRIPTS}/health-check.sh" "${CURSOR_BASE_URL:-https://${PUBLIC_HOSTNAME}/v1}"
+    ;;
+  status|st)
+    exec "${SCRIPTS}/auth-status.sh" remote
+    ;;
+  relogin|rl|login)
+    exec "${SCRIPTS}/claude-relogin.sh" "$@"
+    ;;
+  copy-auth|ca)
+    exec "${SCRIPTS}/copy-auth-from-mac.sh" "$@"
+    ;;
+  deploy|d)
+    exec "${SCRIPTS}/deploy-to-vps.sh" "$@"
+    ;;
+  build|b)
+    exec "${SCRIPTS}/build.sh" "$@"
+    ;;
+  url)
+    echo "${CURSOR_BASE_URL:-https://${PUBLIC_HOSTNAME}/v1}"
+    ;;
+  env)
+    echo "CCPROXY_HOME=${CCPROXY_HOME}"
+    echo "CURSOR_BASE_URL=${CURSOR_BASE_URL:-}"
+    echo "PUBLIC_HOSTNAME=${PUBLIC_HOSTNAME:-}"
+    echo "CLIPROXY_API_KEY=${CLIPROXY_API_KEY:-dummy}"
+    echo "VPS_SSH_HOST=${VPS_SSH_HOST:-${CLIPROXY_VPS_SSH_HOST:-}}"
+    echo "VPS_DEPLOY_DIR=${VPS_DEPLOY_DIR:-/opt/ccproxy}"
+    ;;
+  ssh)
+    exec ssh -t "${VPS_SSH_HOST:-${CLIPROXY_VPS_SSH_HOST}}" "cd '${VPS_DEPLOY_DIR:-/opt/ccproxy}' && exec \$SHELL"
+    ;;
+  logs)
+    exec ssh "${VPS_SSH_HOST:-${CLIPROXY_VPS_SSH_HOST}}" \
+      "cd '${VPS_DEPLOY_DIR:-/opt/ccproxy}' && docker compose logs -f --tail=100"
+    ;;
+  restart)
+    exec ssh "${VPS_SSH_HOST:-${CLIPROXY_VPS_SSH_HOST}}" \
+      "cd '${VPS_DEPLOY_DIR:-/opt/ccproxy}' && docker compose restart"
+    ;;
+  *)
+    echo "Unknown command: $cmd" >&2
+    echo "Run: ccproxy help" >&2
+    exit 2
+    ;;
+esac

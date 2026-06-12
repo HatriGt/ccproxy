@@ -11,6 +11,7 @@ Setup and operations guides for humans and AI agents.
 | [claude-oauth.md](./claude-oauth.md) | Login, re-login, token copy |
 | [dokploy-traefik.md](./dokploy-traefik.md) | VPS routing with Dokploy/Traefik |
 | [operations.md](./operations.md) | Deploy, health checks, troubleshooting |
+| [user-guide.md](./user-guide.md) | **Daily use** — zsh shortcuts (`cch`, `ccr`, …) |
 
 ## One-command deploy (after prerequisites)
 
