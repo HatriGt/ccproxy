@@ -1,8 +1,18 @@
 #!/usr/bin/env bash
-# Source repo .env (expands $HOME in values when needed).
-set -euo pipefail
+# Source repo .env from bash or zsh:
+#   source scripts/load-env.sh
+#
+# Does not enable set -u/set -e in your interactive shell (safe to source in zsh).
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+if [[ -n "${ZSH_VERSION:-}" ]]; then
+  _ccproxy_script_dir="$(cd "$(dirname "${(%):-%x}")" && pwd)"
+elif [[ -n "${BASH_VERSION:-}" ]]; then
+  _ccproxy_script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+else
+  _ccproxy_script_dir="$(cd "$(dirname "$0")" && pwd)"
+fi
+
+ROOT="$(cd "${_ccproxy_script_dir}/.." && pwd)"
 ENV_FILE="${CCPROXY_ENV_FILE:-${ROOT}/.env}"
 
 if [[ ! -f "$ENV_FILE" ]]; then
@@ -14,3 +24,5 @@ set -a
 # shellcheck source=/dev/null
 source "$ENV_FILE"
 set +a
+
+unset _ccproxy_script_dir
