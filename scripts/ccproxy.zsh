@@ -18,6 +18,7 @@ alias ccr='ccproxy relogin'     # Claude OAuth re-login
 alias ccd='ccproxy deploy'      # redeploy VPS
 alias ccu='ccproxy url'         # print Cursor base URL
 alias cce='ccproxy env'         # show settings
+alias ccst='ccproxy stats'      # token usage per user
 
 # Optional: tab-complete subcommands
 if [[ -n "${ZSH_VERSION:-}" ]] && command -v compdef >/dev/null 2>&1; then
@@ -32,6 +33,7 @@ if [[ -n "${ZSH_VERSION:-}" ]] && command -v compdef >/dev/null 2>&1; then
       'build:Build Docker images'
       'url:Print Cursor base URL'
       'env:Show key settings'
+      'stats:Day-wise token usage per user'
       'ssh:SSH to VPS'
       'logs:Docker logs on VPS'
       'restart:Restart VPS stack'

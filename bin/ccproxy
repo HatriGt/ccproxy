@@ -49,6 +49,7 @@ Commands:
   build, b        Build Docker images locally
   url             Print Cursor base URL (copy/paste)
   env             Show key settings
+  stats           Day-wise token usage per user (usage-tracker)
   ssh             SSH to VPS (cd /opt/ccproxy)
   logs            Tail docker logs on VPS
   restart         Restart stack on VPS
@@ -60,6 +61,7 @@ Zsh shortcuts (after ./scripts/install-shell.sh):
   ccs             ccproxy status
   ccr             ccproxy relogin
   ccd             ccproxy deploy
+  ccst            ccproxy stats
 
 Repo: ${CCPROXY_HOME}
 Cursor URL: \${CURSOR_BASE_URL:-https://cliproxy.yourdomain.com/v1}
@@ -68,6 +70,11 @@ EOF
 
 cmd="${1:-help}"
 shift || true
+
+# ccproxy --stats [--days N] [--by-model] ...
+if [[ "$cmd" == "--stats" ]]; then
+  exec "${SCRIPTS}/usage-stats.sh" "$@"
+fi
 
 case "$cmd" in
   help|-h|--help)
@@ -101,6 +108,9 @@ case "$cmd" in
     echo "CLIPROXY_API_KEY=${CLIPROXY_API_KEY:-dummy}"
     echo "VPS_SSH_HOST=${VPS_SSH_HOST:-${CLIPROXY_VPS_SSH_HOST:-}}"
     echo "VPS_DEPLOY_DIR=${VPS_DEPLOY_DIR:-/opt/ccproxy}"
+    ;;
+  stats)
+    exec "${SCRIPTS}/usage-stats.sh" "$@"
     ;;
   ssh)
     exec ssh -t "${VPS_SSH_HOST:-${CLIPROXY_VPS_SSH_HOST}}" "cd '${VPS_DEPLOY_DIR:-/opt/ccproxy}' && exec \$SHELL"
