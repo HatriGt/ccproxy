@@ -100,7 +100,7 @@ cleanup() {
   echo "==> Disabling request-log"
   mgmt PATCH request-log '{"value":false}' >/dev/null 2>&1 || true
 }
-trap cleanup EXIT INT TERM
+trap cleanup EXIT INT TERM HUP PIPE
 
 echo "==> Watching ${logdir} (new requests only)"
 echo "    Press Ctrl+C to stop"
@@ -142,6 +142,10 @@ watch_logs() {
     done
   else
     while true; do
+      # Safety net: if the SSH client is gone, writing to stdout fails and we
+      # exit (EXIT trap restores request-log). Combined with the -t SIGHUP path
+      # this covers both clean Ctrl+C and dropped connections.
+      echo -n "" || break
       shopt -s nullglob
       for f in "$logdir"/v1-chat-completions-*.log "$logdir"/graphql-*.log; do
         base=$(basename "$f")
@@ -169,8 +173,21 @@ _run_remote() {
     echo "ERROR: CLIPROXY_MGMT_KEY not set in .env" >&2
     exit 1
   fi
+  # Ship the watcher to a temp file, then run it with a TTY (-t). The TTY makes
+  # Ctrl+C propagate and makes sshd send SIGHUP to the remote on disconnect, so
+  # the EXIT trap always restores request-log. Running a file (not a heredoc
+  # over the TTY) avoids interactive line-echo. Keepalives reap dead sessions.
+  # LogLevel=ERROR hides the harmless "not a terminal" notice.
+  local remote_tmp
+  remote_tmp="/tmp/ccproxy-live-$$-$RANDOM.sh"
   # shellcheck disable=SC2016
-  ssh -t "$VPS_HOST" "bash -s" "$MODE" "$KEEP" "$MGMT_KEY" <<<"$(_remote_script)"
+  _remote_script | ssh -o LogLevel=ERROR "$VPS_HOST" "cat > '$remote_tmp'"
+  ssh -t \
+    -o LogLevel=ERROR \
+    -o ServerAliveInterval=5 \
+    -o ServerAliveCountMax=2 \
+    "$VPS_HOST" \
+    "trap 'rm -f \"$remote_tmp\"' EXIT; exec bash '$remote_tmp' '$MODE' '$KEEP' '$MGMT_KEY'"
 }
 
 _run_local() {

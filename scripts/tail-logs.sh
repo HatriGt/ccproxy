@@ -30,7 +30,7 @@ _stream() {
 
 case "$TARGET" in
   remote)
-    ssh -t "$VPS_HOST" "TAIL_LINES=$TAIL bash -s" <<'REMOTE'
+    ssh -tt -o LogLevel=ERROR "$VPS_HOST" "TAIL_LINES=$TAIL bash -s" <<'REMOTE'
 set -euo pipefail
 api=$(docker ps --format '{{.Names}}' | grep -E 'ccproxy.*cli-proxy-api' | head -1)
 shim=$(docker ps --format '{{.Names}}' | grep -E 'ccproxy.*cursor-shim' | head -1)
