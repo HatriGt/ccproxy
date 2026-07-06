@@ -19,6 +19,7 @@ alias ccd='ccproxy deploy'      # redeploy VPS
 alias ccu='ccproxy url'         # print Cursor base URL
 alias cce='ccproxy env'         # show settings
 alias ccst='ccproxy stats'      # token usage per user
+alias ccl='ccproxy live'        # live request logs + prompts
 
 # Optional: tab-complete subcommands
 if [[ -n "${ZSH_VERSION:-}" ]] && command -v compdef >/dev/null 2>&1; then
@@ -34,8 +35,9 @@ if [[ -n "${ZSH_VERSION:-}" ]] && command -v compdef >/dev/null 2>&1; then
       'url:Print Cursor base URL'
       'env:Show key settings'
       'stats:Day-wise token usage per user'
+      'live:Live request logs with prompts'
+      'logs:Docker stdout logs on VPS'
       'ssh:SSH to VPS'
-      'logs:Docker logs on VPS'
       'restart:Restart VPS stack'
       'help:Show help'
     )

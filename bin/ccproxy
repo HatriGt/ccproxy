@@ -50,8 +50,9 @@ Commands:
   url             Print Cursor base URL (copy/paste)
   env             Show key settings
   stats           Day-wise token usage per user (usage-tracker)
+  live            Live request logs with prompts (temporarily enables request-log)
   ssh             SSH to VPS (cd /opt/ccproxy)
-  logs            Tail docker logs on VPS
+  logs            Tail docker stdout logs on VPS (api + shim)
   restart         Restart stack on VPS
   help            This help
 
@@ -62,6 +63,7 @@ Zsh shortcuts (after ./scripts/install-shell.sh):
   ccr             ccproxy relogin
   ccd             ccproxy deploy
   ccst            ccproxy stats
+  ccl             ccproxy live
 
 Repo: ${CCPROXY_HOME}
 Cursor URL: \${CURSOR_BASE_URL:-https://cliproxy.yourdomain.com/v1}
@@ -74,6 +76,11 @@ shift || true
 # ccproxy --stats [--days N] [--by-model] ...
 if [[ "$cmd" == "--stats" ]]; then
   exec "${SCRIPTS}/usage-stats.sh" "$@"
+fi
+
+# ccproxy --live [--full] [--keep]
+if [[ "$cmd" == "--live" ]]; then
+  exec "${SCRIPTS}/live-logs.sh" "$@"
 fi
 
 case "$cmd" in
@@ -112,12 +119,14 @@ case "$cmd" in
   stats)
     exec "${SCRIPTS}/usage-stats.sh" "$@"
     ;;
+  live)
+    exec "${SCRIPTS}/live-logs.sh" "$@"
+    ;;
   ssh)
     exec ssh -t "${VPS_SSH_HOST:-${CLIPROXY_VPS_SSH_HOST}}" "cd '${VPS_DEPLOY_DIR:-/opt/ccproxy}' && exec \$SHELL"
     ;;
   logs)
-    exec ssh "${VPS_SSH_HOST:-${CLIPROXY_VPS_SSH_HOST}}" \
-      "cd '${VPS_DEPLOY_DIR:-/opt/ccproxy}' && docker compose logs -f --tail=100"
+    exec "${SCRIPTS}/tail-logs.sh" "$@"
     ;;
   restart)
     exec ssh "${VPS_SSH_HOST:-${CLIPROXY_VPS_SSH_HOST}}" \
