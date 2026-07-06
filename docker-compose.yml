@@ -24,6 +24,7 @@ services:
       CCPROXY_USAGE_STATS: ${CCPROXY_USAGE_STATS:-true}
     volumes:
       - cliproxy-auth:/data/auth
+      - cliproxy-models:/data/models
     expose:
       - "8318"
     networks:
@@ -71,6 +72,7 @@ services:
 volumes:
   cliproxy-auth:
   cliproxy-usage:
+  cliproxy-models:
 
 networks:
   ccproxy:

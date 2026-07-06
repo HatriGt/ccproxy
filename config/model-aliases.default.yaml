@@ -1,0 +1,20 @@
+# Default Claude model aliases (alias -> upstream model name).
+# Seeded into the persistent volume /data/models/aliases.yaml on first start.
+# After that, manage entries with `ccproxy add-model` / `ccproxy remove-model`
+# (edits the persistent copy live; survives redeploys).
+- alias: ak-claude-sonnet-4.6
+  name: claude-sonnet-4-6
+- alias: ak-claude-sonnet-4.5
+  name: claude-sonnet-4-5-20250929
+- alias: ak-claude-opus-4.7
+  name: claude-opus-4-7
+- alias: ak-claude-opus4-7
+  name: claude-opus-4-7
+- alias: ak-claude-opus-4.8
+  name: claude-opus-4-8
+- alias: ak-claude-opus4-8
+  name: claude-opus-4-8
+- alias: ak-claude-opus-4.6
+  name: claude-opus-4-6
+- alias: ak-claude-haiku-4.5
+  name: claude-haiku-4-5-20251001

@@ -50,6 +50,9 @@ Commands:
   url             Print Cursor base URL (copy/paste)
   env             Show key settings
   accounts, acc   Claude account status (active/expired/needs re-login)
+  models          List Claude model aliases
+  add-model       Add/update a model alias: add-model <alias> <upstream-name>
+  remove-model    Remove a model alias: remove-model <alias>
   stats           Day-wise token usage per user (usage-tracker)
   live            Live request logs with prompts (temporarily enables request-log)
   ssh             SSH to VPS (cd /opt/ccproxy)
@@ -124,6 +127,15 @@ case "$cmd" in
     ;;
   accounts|acc)
     exec "${SCRIPTS}/accounts-status.sh" "$@"
+    ;;
+  models)
+    exec "${SCRIPTS}/models.sh" list "$@"
+    ;;
+  add-model)
+    exec "${SCRIPTS}/models.sh" add "$@"
+    ;;
+  remove-model)
+    exec "${SCRIPTS}/models.sh" remove "$@"
     ;;
   stats)
     exec "${SCRIPTS}/usage-stats.sh" "$@"
