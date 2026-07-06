@@ -10,13 +10,17 @@ source "${ROOT}/scripts/load-env.sh"
 TARGET="${USAGE_STATS_TARGET:-remote}"
 VPS_HOST="${VPS_SSH_HOST:-${CLIPROXY_VPS_SSH_HOST:-akvps}}"
 
-# Default: last 7 days if no range flags passed.
+# Default: last 7 days if no args passed.
 ARGS=("$@")
 has_range=false
-for a in "${ARGS[@]}"; do
-  [[ "$a" == "--days" || "$a" == "--from" || "$a" == "--to" ]] && has_range=true
-done
-[[ "$has_range" == true || ${#ARGS[@]} -gt 0 ]] || ARGS=(--days 7)
+if ((${#ARGS[@]} > 0)); then
+  for a in "${ARGS[@]}"; do
+    [[ "$a" == "--days" || "$a" == "--from" || "$a" == "--to" ]] && has_range=true
+  done
+fi
+if [[ "$has_range" == false && ${#ARGS[@]} -eq 0 ]]; then
+  ARGS=(--days 7)
+fi
 
 _find_tracker() {
   docker ps --format '{{.Names}}' | grep -E 'ccproxy.*usage-tracker' | head -1
