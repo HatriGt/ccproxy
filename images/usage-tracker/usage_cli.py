@@ -51,13 +51,13 @@ def query(conn, args, start, end):
                SUM(output_tokens) AS output_tokens,
                SUM(reasoning_tokens) AS reasoning_tokens,
                SUM(cached_tokens) AS cached_tokens,
-               SUM(total_tokens)  AS total_tokens,
+               SUM(input_tokens + output_tokens + reasoning_tokens) AS net_tokens,
                COUNT(*)           AS requests,
                SUM(failed)        AS failed
         FROM usage
         WHERE {' AND '.join(where)}
         GROUP BY {cols}
-        ORDER BY day DESC, total_tokens DESC
+        ORDER BY day DESC, net_tokens DESC
     """
     conn.row_factory = sqlite3.Row
     return [dict(r) for r in conn.execute(sql, params).fetchall()]
@@ -71,31 +71,35 @@ def print_table(rows, by_model):
     if not rows:
         print("No usage recorded for this range.")
         return
+    # NET = new input + output (+ reasoning). CACHE = prompt-cache reads (reused
+    # context; upstream total_tokens includes cache, which inflates the number).
     if by_model:
-        header = f"{'DATE':<11} {'USER':<28} {'MODEL':<26} {'IN':>10} {'OUT':>10} {'TOTAL':>12} {'REQ':>6}"
+        header = f"{'DATE':<11} {'USER':<28} {'MODEL':<26} {'IN':>8} {'OUT':>8} {'CACHE':>10} {'NET':>10} {'REQ':>5}"
     else:
-        header = f"{'DATE':<11} {'USER':<28} {'IN':>10} {'OUT':>10} {'TOTAL':>12} {'REQ':>6}"
+        header = f"{'DATE':<11} {'USER':<28} {'IN':>8} {'OUT':>8} {'CACHE':>10} {'NET':>10} {'REQ':>5}"
     print(header)
     print("-" * len(header))
-    tot = {"input": 0, "output": 0, "total": 0, "req": 0}
+    tot = {"input": 0, "output": 0, "cached": 0, "net": 0, "req": 0}
     for r in rows:
         tot["input"] += r["input_tokens"]
         tot["output"] += r["output_tokens"]
-        tot["total"] += r["total_tokens"]
+        tot["cached"] += r["cached_tokens"]
+        tot["net"] += r["net_tokens"]
         tot["req"] += r["requests"]
         if by_model:
             print(f"{r['day']:<11} {r['source'][:28]:<28} {(r['model'] or '-')[:26]:<26} "
-                  f"{human(r['input_tokens']):>10} {human(r['output_tokens']):>10} "
-                  f"{human(r['total_tokens']):>12} {r['requests']:>6}")
+                  f"{human(r['input_tokens']):>8} {human(r['output_tokens']):>8} "
+                  f"{human(r['cached_tokens']):>10} {human(r['net_tokens']):>10} {r['requests']:>5}")
         else:
             print(f"{r['day']:<11} {r['source'][:28]:<28} "
-                  f"{human(r['input_tokens']):>10} {human(r['output_tokens']):>10} "
-                  f"{human(r['total_tokens']):>12} {r['requests']:>6}")
+                  f"{human(r['input_tokens']):>8} {human(r['output_tokens']):>8} "
+                  f"{human(r['cached_tokens']):>10} {human(r['net_tokens']):>10} {r['requests']:>5}")
     print("-" * len(header))
     label = "TOTAL"
     pad = 40 if not by_model else 66
-    print(f"{label:<{pad}} {human(tot['input']):>10} {human(tot['output']):>10} "
-          f"{human(tot['total']):>12} {tot['req']:>6}")
+    print(f"{label:<{pad}} {human(tot['input']):>8} {human(tot['output']):>8} "
+          f"{human(tot['cached']):>10} {human(tot['net']):>10} {tot['req']:>5}")
+    print("\nNET = IN + OUT (+ reasoning). CACHE = prompt-cache context reused by Cursor.")
 
 
 def main():
