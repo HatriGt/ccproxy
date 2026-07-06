@@ -49,6 +49,7 @@ Commands:
   build, b        Build Docker images locally
   url             Print Cursor base URL (copy/paste)
   env             Show key settings
+  accounts, acc   Claude account status (active/expired/needs re-login)
   stats           Day-wise token usage per user (usage-tracker)
   live            Live request logs with prompts (temporarily enables request-log)
   ssh             SSH to VPS (cd /opt/ccproxy)
@@ -83,6 +84,11 @@ if [[ "$cmd" == "--live" ]]; then
   exec "${SCRIPTS}/live-logs.sh" "$@"
 fi
 
+# ccproxy --accounts
+if [[ "$cmd" == "--accounts" ]]; then
+  exec "${SCRIPTS}/accounts-status.sh" "$@"
+fi
+
 case "$cmd" in
   help|-h|--help)
     usage
@@ -115,6 +121,9 @@ case "$cmd" in
     echo "CLIPROXY_API_KEY=${CLIPROXY_API_KEY:-dummy}"
     echo "VPS_SSH_HOST=${VPS_SSH_HOST:-${CLIPROXY_VPS_SSH_HOST:-}}"
     echo "VPS_DEPLOY_DIR=${VPS_DEPLOY_DIR:-/opt/ccproxy}"
+    ;;
+  accounts|acc)
+    exec "${SCRIPTS}/accounts-status.sh" "$@"
     ;;
   stats)
     exec "${SCRIPTS}/usage-stats.sh" "$@"
