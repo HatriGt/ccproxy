@@ -29,6 +29,44 @@ Scripts auto-load via `scripts/load-env.sh`.
 | `CLIPROXY_MGMT_KEY` | — | Plain key for management API (if enabled) |
 | `CLIPROXY_REMOTE_MGMT_SECRET_KEY` | — | Bcrypt/plain secret in `config/config.yaml` `remote-management.secret-key` |
 
+## Logging / telemetry
+
+Rendered into `config.yaml` at container start by `images/cli-proxy-api/entrypoint.sh`
+(from `config/config.yaml.template`). Flip to `true` only when debugging — request
+and file logs grow fast on disk.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CCPROXY_DEBUG` | `false` | Verbose debug logging |
+| `CCPROXY_LOGGING_TO_FILE` | `false` | Write logs to files (disk-heavy) |
+| `CCPROXY_REQUEST_LOG` | `false` | Per-request logs (disk-heavy) |
+| `CCPROXY_USAGE_STATS` | `true` | Publish usage to the queue (needed for token tracking) |
+
+## Usage tracking (per-user token stats)
+
+The `usage-tracker` sidecar drains `/v0/management/usage-queue` into SQLite so the
+`usage-cli` can report day-wise, per-user token consumption. Requires remote
+management (internal-only; port 8318 is never published to the host).
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CCPROXY_ALLOW_REMOTE_MGMT` | `true` | Enable mgmt API for the sidecar (compose-network only) |
+| `CCPROXY_MGMT_SECRET_KEY` | `$CLIPROXY_MGMT_KEY` | Mgmt secret in config; falls back to `CLIPROXY_MGMT_KEY` |
+| `USAGE_TRACKER_IMAGE` | `ccproxy-usage-tracker:local` | Built tracker image name |
+| `USAGE_POLL_SECS` | `15` | Queue drain interval |
+| `USAGE_BATCH` | `200` | Records per drain call |
+
+**Read the report** (SQLite lives in the `cliproxy-usage` volume):
+
+```bash
+# last 7 days, per day x user
+docker compose exec usage-tracker usage-cli
+docker compose exec usage-tracker usage-cli --days 30
+docker compose exec usage-tracker usage-cli --by-model
+docker compose exec usage-tracker usage-cli --from 2026-07-01 --to 2026-07-06
+docker compose exec usage-tracker usage-cli --user a.ravichandran --json
+```
+
 ## Service ports (Docker)
 
 | Variable | Default | Description |

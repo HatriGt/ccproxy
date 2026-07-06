@@ -1,0 +1,58 @@
+# Docker / VPS — RENDERED FROM ENV by images/cli-proxy-api/entrypoint.sh.
+# Do not edit the mounted config.yaml directly; change .env instead.
+# Logging knobs (${CCPROXY_DEBUG} etc.) are substituted at container start.
+host: "0.0.0.0"
+port: 8318
+auth-dir: "/data/auth"
+api-keys:
+  - dummy
+amp-restrict-management-to-localhost: true
+amp-upstream-url: https://ampcode.com
+debug: ${CCPROXY_DEBUG}
+generative-language-api-key: []
+logging-to-file: ${CCPROXY_LOGGING_TO_FILE}
+oauth-excluded-models:
+  antigravity:
+    - '*'
+  codex:
+    - '*'
+  gemini-cli:
+    - '*'
+  github-copilot:
+    - '*'
+  kimi:
+    - '*'
+  qwen:
+    - '*'
+oauth-model-alias:
+  claude:
+    - alias: ak-claude-sonnet-4.6
+      name: claude-sonnet-4-6
+    - alias: ak-claude-sonnet-4.5
+      name: claude-sonnet-4-5-20250929
+    - alias: ak-claude-opus-4.7
+      name: claude-opus-4-7
+    - alias: ak-claude-opus4-7
+      name: claude-opus-4-7
+    - alias: ak-claude-opus-4.8
+      name: claude-opus-4-8
+    - alias: ak-claude-opus4-8
+      name: claude-opus-4-8
+    - alias: ak-claude-opus-4.6
+      name: claude-opus-4-6
+    - alias: ak-claude-haiku-4.5
+      name: claude-haiku-4-5-20251001
+proxy-url: ''
+quota-exceeded:
+  switch-preview-model: true
+  switch-project: true
+remote-management:
+  # allow-remote=true so the usage-tracker sidecar (separate container, same
+  # compose network) can drain /v0/management/usage-queue. Port 8318 is only
+  # `expose`d (never published to the host), so this stays internal-only.
+  allow-remote: ${CCPROXY_ALLOW_REMOTE_MGMT}
+  secret-key: "${CCPROXY_MGMT_SECRET_KEY}"
+request-retry: 3
+request-timeout: 10m
+request-log: ${CCPROXY_REQUEST_LOG}
+usage-statistics-enabled: ${CCPROXY_USAGE_STATS}

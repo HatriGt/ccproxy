@@ -15,11 +15,36 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    environment:
+      # Logging/telemetry toggles (rendered into config.yaml at start).
+      # Log-to-file + request-log default OFF to save disk; usage stats ON.
+      CCPROXY_DEBUG: ${CCPROXY_DEBUG:-false}
+      CCPROXY_LOGGING_TO_FILE: ${CCPROXY_LOGGING_TO_FILE:-false}
+      CCPROXY_REQUEST_LOG: ${CCPROXY_REQUEST_LOG:-false}
+      CCPROXY_USAGE_STATS: ${CCPROXY_USAGE_STATS:-true}
     volumes:
-      - ./config/config.yaml:/CLIProxyAPI/config.yaml:ro
       - cliproxy-auth:/data/auth
     expose:
       - "8318"
+    networks:
+      - ccproxy
+
+  usage-tracker:
+    build:
+      context: .
+      dockerfile: images/usage-tracker/Dockerfile
+    image: ${USAGE_TRACKER_IMAGE:-ccproxy-usage-tracker:local}
+    restart: unless-stopped
+    depends_on:
+      - cli-proxy-api
+    environment:
+      CLIPROXY_UPSTREAM: ${CLIPROXY_UPSTREAM:-http://cli-proxy-api:8318}
+      CLIPROXY_MGMT_KEY: ${CLIPROXY_MGMT_KEY:-}
+      USAGE_DB_PATH: /data/usage/usage.db
+      USAGE_POLL_SECS: ${USAGE_POLL_SECS:-15}
+      USAGE_BATCH: ${USAGE_BATCH:-200}
+    volumes:
+      - cliproxy-usage:/data/usage
     networks:
       - ccproxy
 
@@ -45,6 +70,7 @@ services:
 
 volumes:
   cliproxy-auth:
+  cliproxy-usage:
 
 networks:
   ccproxy:
