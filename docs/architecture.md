@@ -49,9 +49,23 @@ Previously: Mac shim → SSH reverse tunnel → VPS socat → Traefik.
 
 ## Model aliases
 
-Configured in `config/config.yaml` under `oauth-model-alias.claude`. Cursor typically uses:
+Live aliases live in the `cliproxy-models` volume (`/data/models/aliases.yaml`),
+seeded from `config/model-aliases.default.yaml` and injected under
+`oauth-model-alias.claude` at container start. Manage with:
+
+```bash
+ccproxy models
+ccproxy add-model <alias> <upstream-name>
+ccproxy remove-model <alias>
+```
+
+Cursor typically uses:
 
 - `ak-claude-sonnet-4.6` (default health-check model)
-- `ak-claude-opus-4.7`, etc.
+- `ak-claude-opus-4.8`, `ak-claude-opus-4.7`, etc.
+- Effort variants: `ak-claude-opus-4.8-low` / `-medium` / `-high`
 
-Mapped to Anthropic model IDs via CLIProxyAPI.
+Mapped to Anthropic model IDs via CLIProxyAPI. Effort suffixes match wildcard
+`payload.override` rules in `config/config.yaml.template` (`ak-claude-*-low` →
+`output_config.effort: low`, etc.). Upstream `name` must stay plain (no
+`(low)` parentheses).

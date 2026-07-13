@@ -51,7 +51,9 @@ Commands:
   env             Show key settings
   accounts, acc   Claude account status (active/expired/needs re-login)
   models          List Claude model aliases
-  add-model       Add/update a model alias: add-model <alias> <upstream-name>
+  add-model       Add/update alias: add-model <alias> <upstream-name>
+                  Effort: suffix -low/-medium/-high auto-sets thinking effort
+                  (e.g. add-model ak-claude-opus-4.9-low claude-opus-4-9)
   remove-model    Remove a model alias: remove-model <alias>
   stats           Day-wise token usage per user (usage-tracker)
   live            Live request logs with prompts (temporarily enables request-log)

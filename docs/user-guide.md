@@ -21,6 +21,22 @@ Adds `ccproxy` to `~/.local/bin` and short aliases to your shell.
 | `ccu` | Print Cursor base URL |
 | `cce` | Show key env settings |
 | `ccp help` | Full command list |
+| `ccproxy models` | List model aliases |
+| `ccproxy add-model` | Add/update alias (`--help` shows examples) |
+| `ccproxy remove-model` | Remove an alias |
+| `ccst` | Token usage stats |
+| `ccl` | Live request logs |
+
+## Model aliases & effort
+
+```bash
+ccproxy models
+ccproxy add-model ak-claude-opus-4.9 claude-opus-4-9
+ccproxy add-model ak-claude-opus-4.9-low claude-opus-4-9   # auto effort=low
+ccproxy add-model --help   # usage + effort examples
+```
+
+Alias suffix `-low` / `-medium` / `-high` (pattern `ak-claude-*-…`) auto-sets Claude adaptive effort. Always use a plain upstream id (e.g. `claude-opus-4-9`), never `claude-opus-4-9(low)`.
 
 ## Without aliases
 

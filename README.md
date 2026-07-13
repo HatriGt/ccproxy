@@ -67,7 +67,27 @@ Full walkthrough: **[docs/setup-from-scratch.md](./docs/setup-from-scratch.md)**
 | OpenAI API Key | `dummy` (or your own secret) |
 | Anthropic API Key | **Off** |
 
-Reload the window (`Cmd/Ctrl+Shift+P` → *Developer: Reload Window*), then select a model such as `ak-claude-sonnet-4.6` or `ak-claude-opus-4.7`.
+Reload the window (`Cmd/Ctrl+Shift+P` → *Developer: Reload Window*), then select a model such as `ak-claude-sonnet-4.6`, `ak-claude-opus-4.8`, or an effort variant like `ak-claude-opus-4.8-low`.
+
+### Model aliases & effort
+
+Add or update Cursor-visible models without a full redeploy:
+
+```bash
+ccproxy models
+ccproxy add-model ak-claude-opus-4.9 claude-opus-4-9
+ccproxy add-model --help    # shows usage + effort examples
+```
+
+**Effort / thinking** (saves tokens on Claude 4.6+): name the alias with `-low`, `-medium`, or `-high` and point it at the **plain** upstream model. Wildcard rules inject `output_config.effort` automatically.
+
+```bash
+ccproxy add-model ak-claude-opus-4.9-low    claude-opus-4-9
+ccproxy add-model ak-claude-opus-4.9-medium claude-opus-4-9
+ccproxy add-model ak-claude-opus-4.9-high   claude-opus-4-9
+```
+
+Do **not** put `(low)` / `(high)` in the upstream name — that breaks routing.
 
 ### 2. Work
 
