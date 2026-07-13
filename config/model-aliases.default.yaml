@@ -14,6 +14,14 @@
   name: claude-opus-4-8
 - alias: ak-claude-opus4-8
   name: claude-opus-4-8
+# Effort variants share the same upstream model; effort is forced via
+# payload.override in config.yaml.template (do NOT put (low)/(high) in name).
+- alias: ak-claude-opus-4.8-low
+  name: claude-opus-4-8
+- alias: ak-claude-opus-4.8-medium
+  name: claude-opus-4-8
+- alias: ak-claude-opus-4.8-high
+  name: claude-opus-4-8
 - alias: ak-claude-opus-4.6
   name: claude-opus-4-6
 - alias: ak-claude-haiku-4.5
