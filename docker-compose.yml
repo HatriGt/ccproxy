@@ -10,7 +10,7 @@ services:
       context: .
       dockerfile: images/cli-proxy-api/Dockerfile
       args:
-        CLIPROXY_UPSTREAM_TAG: ${CLIPROXY_IMAGE_TAG:-v7.1.63}
+        CLIPROXY_UPSTREAM_TAG: ${CLIPROXY_IMAGE_TAG:-v7.2.71}
     image: ${CLIPROXY_API_IMAGE:-ccproxy-cli-proxy-api:local}
     restart: unless-stopped
     env_file:

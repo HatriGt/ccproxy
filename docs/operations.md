@@ -71,7 +71,7 @@ echo $?
 
 ### Upgrade CLIProxyAPI version
 
-1. Set `CLIPROXY_IMAGE_TAG` in `.env` (e.g. `v7.1.66`)
+1. Set `CLIPROXY_IMAGE_TAG` in `.env` (e.g. `v7.2.71`)
 2. `./scripts/deploy-to-vps.sh`
 
 ## Backup OAuth tokens
