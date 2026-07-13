@@ -16,7 +16,8 @@ Adds `ccproxy` to `~/.local/bin` and short aliases to your shell.
 |---------|----------------|
 | `cch` | Health check (models + chat) |
 | `ccs` | Auth status on VPS |
-| `ccr` | Claude re-login on VPS |
+| `ccr` | Claude login / re-login on VPS |
+| `ccproxy login` | Same as `ccproxy relogin` |
 | `ccd` | Redeploy to VPS |
 | `ccu` | Print Cursor base URL |
 | `cce` | Show key env settings |

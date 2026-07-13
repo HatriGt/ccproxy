@@ -14,7 +14,7 @@ alias ccp='ccproxy'
 # Daily shortcuts
 alias cch='ccproxy health'      # health check
 alias ccs='ccproxy status'      # auth + API status
-alias ccr='ccproxy relogin'     # Claude OAuth re-login
+alias ccr='ccproxy relogin'     # Claude OAuth login / re-login
 alias ccd='ccproxy deploy'      # redeploy VPS
 alias ccu='ccproxy url'         # print Cursor base URL
 alias cce='ccproxy env'         # show settings

@@ -43,7 +43,8 @@ Usage: ccproxy <command>
 Commands:
   health, h       Test public URL (models + chat)
   status, st      Auth files + health on VPS
-  relogin, rl     Claude OAuth re-login on VPS
+  login           Claude OAuth login on VPS (same as relogin)
+  relogin, rl     Claude OAuth re-login on VPS (same as login)
   copy-auth, ca   Copy claude-*.json from Mac → VPS
   deploy, d       Full redeploy to VPS
   build, b        Build Docker images locally
@@ -57,7 +58,7 @@ Commands:
   remove-model    Remove a model alias: remove-model <alias>
   stats           Day-wise token usage per user (usage-tracker)
   live            Live request logs with prompts (temporarily enables request-log)
-  ssh             SSH to VPS (cd /opt/ccproxy)
+  ssh             SSH to VPS
   logs            Tail docker stdout logs on VPS (api + shim)
   restart         Restart stack on VPS
   help            This help
@@ -104,8 +105,11 @@ case "$cmd" in
   status|st)
     exec "${SCRIPTS}/auth-status.sh" remote
     ;;
-  relogin|rl|login)
-    exec "${SCRIPTS}/claude-relogin.sh" "$@"
+  login)
+    exec "${SCRIPTS}/claude-relogin.sh" login "$@"
+    ;;
+  relogin|rl)
+    exec "${SCRIPTS}/claude-relogin.sh" relogin "$@"
     ;;
   copy-auth|ca)
     exec "${SCRIPTS}/copy-auth-from-mac.sh" "$@"

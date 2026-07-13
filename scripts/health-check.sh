@@ -19,10 +19,25 @@ fail() {
   exit 2
 }
 
+# Optional retries (used after container restart to avoid race).
+RETRIES="${CLIPROXY_TEST_RETRIES:-1}"
+RETRY_SECS="${CLIPROXY_TEST_RETRY_SECS:-2}"
+
 echo "==> Testing ${BASE}"
 echo "    [1/2] GET /v1/models ..."
 
-MODELS=$(curl -fsS -m 30 "${BASE}/models" -H "Authorization: Bearer ${API_KEY}" 2>&1) || fail "models: ${MODELS}"
+MODELS=""
+models_ok=0
+for attempt in $(seq 1 "$RETRIES"); do
+  if MODELS=$(curl -fsS -m 30 "${BASE}/models" -H "Authorization: Bearer ${API_KEY}" 2>&1); then
+    models_ok=1
+    break
+  fi
+  if [ "$attempt" -lt "$RETRIES" ]; then
+    sleep "$RETRY_SECS"
+  fi
+done
+[ "$models_ok" = "1" ] || fail "models: ${MODELS}"
 
 if echo "$MODELS" | grep -q 'auth_unavailable'; then
   echo "AUTH: models endpoint reports auth_unavailable" >&2
