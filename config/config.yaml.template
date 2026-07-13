@@ -44,31 +44,22 @@ usage-statistics-enabled: ${CCPROXY_USAGE_STATS}
 
 # Force Claude adaptive effort for Cursor-friendly ak-*-{low,medium,high} aliases.
 # Aliases must map to a plain upstream model (suffixes in `name:` break routing).
-# Override matches the *client* model id and injects effort into both OpenAI and
-# Claude protocol payloads (shim speaks OpenAI; translator may re-encode Claude).
+# Only set output_config.effort — reasoning_effort is OpenAI-only and Anthropic
+# rejects it as "Extra inputs are not permitted" on /v1/messages.
 payload:
   override:
     - models:
         - name: "ak-claude-opus-4.8-low"
-          protocol: "openai"
-        - name: "ak-claude-opus-4.8-low"
           protocol: "claude"
       params:
-        reasoning_effort: "low"
         "output_config.effort": "low"
     - models:
         - name: "ak-claude-opus-4.8-medium"
-          protocol: "openai"
-        - name: "ak-claude-opus-4.8-medium"
           protocol: "claude"
       params:
-        reasoning_effort: "medium"
         "output_config.effort": "medium"
     - models:
         - name: "ak-claude-opus-4.8-high"
-          protocol: "openai"
-        - name: "ak-claude-opus-4.8-high"
           protocol: "claude"
       params:
-        reasoning_effort: "high"
         "output_config.effort": "high"
