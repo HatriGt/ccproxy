@@ -91,11 +91,28 @@ case "$sub" in
     alias="${1:-}"; name="${2:-}"
     if [ -z "$alias" ] || [ -z "$name" ]; then
       echo "Usage: ccproxy add-model <alias> <upstream-model-name>" >&2
-      echo "Example: ccproxy add-model ak-claude-opus-4.8-low 'claude-opus-4-8(low)'" >&2
+      echo "Example: ccproxy add-model ak-claude-opus-4.9 claude-opus-4-9" >&2
+      echo "Effort:  ccproxy add-model ak-claude-opus-4.9-low claude-opus-4-9" >&2
+      echo "         (alias suffix -low/-medium/-high auto-sets output_config.effort)" >&2
       exit 2
     fi
+    case "$alias" in
+      *-low|*-medium|*-high)
+        if [[ "$name" == *'('* ]]; then
+          echo "ERROR: do not put (effort) in the upstream name; use a plain model id." >&2
+          echo "  right: ccproxy add-model ${alias} claude-opus-4-9" >&2
+          echo "  wrong: ccproxy add-model ${alias} 'claude-opus-4-9(low)'" >&2
+          exit 2
+        fi
+        ;;
+    esac
     _remote add "$alias" "$name"
     echo "==> Verify: ccproxy models   (and check https://<host>/v1/models)"
+    case "$alias" in
+      *-low)    echo "==> Effort: low (ak-claude-*-low wildcard)" ;;
+      *-medium) echo "==> Effort: medium (ak-claude-*-medium wildcard)" ;;
+      *-high)   echo "==> Effort: high (ak-claude-*-high wildcard)" ;;
+    esac
     ;;
   remove|rm)
     alias="${1:-}"

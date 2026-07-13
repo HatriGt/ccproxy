@@ -42,24 +42,25 @@ request-timeout: 10m
 request-log: ${CCPROXY_REQUEST_LOG}
 usage-statistics-enabled: ${CCPROXY_USAGE_STATS}
 
-# Force Claude adaptive effort for Cursor-friendly ak-*-{low,medium,high} aliases.
-# Aliases must map to a plain upstream model (suffixes in `name:` break routing).
-# Only set output_config.effort — reasoning_effort is OpenAI-only and Anthropic
-# rejects it as "Extra inputs are not permitted" on /v1/messages.
+# Auto effort from alias suffix. After this, only `ccproxy add-model` is needed:
+#   ccproxy add-model ak-claude-opus-4.9-low claude-opus-4-9
+# maps to plain upstream + injects output_config.effort via the matching wildcard.
+# Do NOT put (low)/(high) in the upstream name — that breaks routing.
+# Only output_config.effort — Anthropic rejects reasoning_effort on /v1/messages.
 payload:
   override:
     - models:
-        - name: "ak-claude-opus-4.8-low"
+        - name: "ak-claude-*-low"
           protocol: "claude"
       params:
         "output_config.effort": "low"
     - models:
-        - name: "ak-claude-opus-4.8-medium"
+        - name: "ak-claude-*-medium"
           protocol: "claude"
       params:
         "output_config.effort": "medium"
     - models:
-        - name: "ak-claude-opus-4.8-high"
+        - name: "ak-claude-*-high"
           protocol: "claude"
       params:
         "output_config.effort": "high"
