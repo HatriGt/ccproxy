@@ -4,8 +4,8 @@
 
 ### Use Cursor IDE & OpenAI Codex with your Claude Pro / Max subscription
 
-**Self-hosted OpenAI-compatible proxy** for Claude OAuth — no Anthropic pay-per-token API key.
-One HTTPS URL powers **Cursor Agent/chat** and **OpenAI Codex** (desktop + CLI).
+Keep the **agent harness and UX** you already like (tabs, diffs, tools, rules, desktop/CLI workflows) — run them on **Claude**, not Anthropic pay-per-token keys.
+One self-hosted HTTPS URL powers **Cursor Agent/chat** and **OpenAI Codex**.
 
 [![GitHub stars](https://img.shields.io/github/stars/HatriGt/ccproxy?style=social)](https://github.com/HatriGt/ccproxy/stargazers)
 [![GitHub forks](https://img.shields.io/github/forks/HatriGt/ccproxy?style=social)](https://github.com/HatriGt/ccproxy/fork)
@@ -32,13 +32,14 @@ Codex   ─┘
 
 ## Why ccproxy?
 
-Developers search for ways to run **Claude in Cursor** or **Claude in Codex** without burning Anthropic API credits. **ccproxy** is that bridge:
+Many people pick **Cursor** or **Codex** over Claude Code because of the **harness**: editor UX, multi-file tooling, rules, diffs, and extra options — not because they dislike Claude models. **ccproxy** keeps that harness and swaps the backend to your **Claude Pro/Max** subscription.
 
 | Need | What ccproxy does |
 |------|-------------------|
+| Stay in Cursor / Codex | Same harness and UX; only the model endpoint changes |
 | Cursor + Claude Pro/Max | OpenAI Base URL override → Claude via OAuth |
 | OpenAI Codex + Claude | Responses API (`/v1/responses`) on the same URL |
-| Avoid API key bills | Uses your Claude subscription sessions (CLIProxyAPI) |
+| Avoid API key bills | Claude subscription sessions (CLIProxyAPI), not Anthropic API keys |
 | Self-hosted control | Docker Compose on your VPS (Traefik / Dokploy ready) |
 
 Built on **[CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI)** with a small gateway shim so Cursor tool blocks and Codex Responses both work.
@@ -154,6 +155,10 @@ Deep dive: **[docs/architecture.md](./docs/architecture.md)**
 ---
 
 ## FAQ
+
+### Why not just use Claude Code?
+
+Claude Code is excellent; many teams still prefer **Cursor** or **Codex** for the **agent harness and UX** (IDE integration, review flow, extra options). ccproxy is for that case: keep the client you want, power it with Claude.
 
 ### Can I use Claude with Cursor without an Anthropic API key?
 
