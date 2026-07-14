@@ -28,16 +28,40 @@ Flow:
 
 Symptoms that you need to re-login:
 
+- `ccproxy accounts` shows **EXPIRED** / needs re-login
 - `ccproxy health` exits **1**
 - Error: `auth_unavailable` or `Invalid authentication credentials`
+
+You do **not** need to re-login every time the `TOKEN` column drops toward 0 hours
+(see below).
 
 Other options:
 
 ```bash
 ccproxy copy-auth   # copy fresh token from Mac VibeProxy
 ccproxy status      # auth files + health
-ccproxy accounts    # per-account status
+ccproxy accounts    # per-account status (ACTIVE / PAUSED / EXPIRED)
+ccproxy pause who   # exclude account from round-robin (near plan limit)
+ccproxy resume who  # put it back
 ```
+
+## Account status (`ccproxy accounts`)
+
+| Column | Meaning |
+|--------|---------|
+| **STATUS** | `ACTIVE` (in round-robin), `PAUSED` (`ccproxy pause`), `EXPIRED` / `EXPIRING` (OAuth access token) |
+| **TOKEN** | Time left on the **current short-lived OAuth access token** (typically ~8 hours). Not Claude plan usage, and not how long the account has been linked. |
+| **ACTION** | What to do next (e.g. resume, re-login) |
+
+### Access token vs refresh token
+
+Anthropic issues a short-lived **access** token (~8h) plus a long-lived **refresh** token.
+
+- CLIProxyAPI refreshes the access token automatically in the background.
+- Seeing `4.0h left` or `8.0h left` on an account added months ago is **normal**.
+- Relogin only when status is **EXPIRED** (refresh failed), not on a routine 8-hour cycle.
+
+`TOKEN` is unrelated to Claude Settings → Usage (5-hour / weekly plan limits). Use `ccproxy limits` or `ccproxy stats` for those.
 
 ## Cooldown behavior
 

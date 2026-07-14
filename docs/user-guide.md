@@ -27,6 +27,8 @@ Adds `ccproxy` to `~/.local/bin` and short aliases to your shell.
 | `ccproxy remove-model` | Remove an alias |
 | `ccst` | Token usage + Claude plan limits (5h / weekly) |
 | `ccproxy limits` | Claude plan limits only (per account) |
+| `ccproxy pause <who>` | Exclude that Claude account from round-robin |
+| `ccproxy resume <who>` | Put it back in round-robin |
 | `ccl` | Live request logs |
 
 ## Model aliases & effort
@@ -49,6 +51,32 @@ ccproxy limits                 # plan limits only
 ccproxy stats                  # token usage table, then plan limits
 ccst                           # shortcut for stats
 ```
+
+## Account status & when to re-login
+
+```bash
+ccproxy accounts               # ACTIVE / PAUSED / EXPIRED
+```
+
+The **TOKEN** column is the current OAuth **access** token TTL (usually ~8h).
+CLIProxyAPI auto-refreshes it — you do **not** re-login every 8 hours. Relogin
+only when STATUS is **EXPIRED**. Plan usage is `ccproxy limits` / `ccproxy stats`,
+not this column. Details: [claude-oauth.md](./claude-oauth.md#account-status-ccproxy-accounts).
+
+## Pause an account near its limit (round-robin)
+
+When one Claude account is about to hit 5h/weekly limits, exclude it from
+routing so traffic uses the others. Uses CLIProxyAPI's durable `disabled`
+flag (survives restarts).
+
+```bash
+ccproxy accounts               # ACTIVE / PAUSED / EXPIRED
+ccproxy pause harish           # substring or full email
+ccproxy resume harish
+# shortcuts: ccpause / ccresume (after install-shell)
+```
+
+Paused ≠ expired OAuth. Resume when the limit window resets.
 
 ## Without aliases
 

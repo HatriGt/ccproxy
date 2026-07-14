@@ -38,7 +38,7 @@ _render() {
   tmp="$(mktemp)"
   cat > "$tmp"
   ACCT_DATA_FILE="$tmp" python3 <<'PY'
-import os, json, datetime
+import os, sys, json, datetime
 
 now = datetime.datetime.now(datetime.timezone.utc)
 with open(os.environ["ACCT_DATA_FILE"]) as fh:
@@ -52,7 +52,7 @@ for b in blobs:
     except Exception:
         continue
     email = d.get("email", "?")
-    disabled = d.get("disabled", False)
+    disabled = bool(d.get("disabled", False))
     exp = d.get("expired") or d.get("expires_at")
     last = d.get("last_refresh", "-")
     mins = None
@@ -69,15 +69,16 @@ if not rows:
     sys.exit(0)
 
 def status(disabled, mins):
+    # disabled = manually paused from round-robin (ccproxy pause), not OAuth failure
     if disabled:
-        return "DISABLED   ", "needs re-login"
+        return "PAUSED     ", "excluded from round-robin"
     if mins is None:
         return "UNKNOWN    ", "check manually"
     if mins < 0:
         return "EXPIRED    ", "needs re-login"
     if mins < 30:
         return "EXPIRING   ", "refresh soon"
-    return "ACTIVE     ", "ok"
+    return "ACTIVE     ", "in round-robin"
 
 def human_mins(mins):
     if mins is None:
@@ -92,17 +93,26 @@ def human_mins(mins):
 print(f"{'ACCOUNT':<34} {'STATUS':<11} {'TOKEN':<18} {'ACTION'}")
 print("-" * 82)
 need = []
+paused = []
 for email, disabled, mins, last in sorted(rows):
     st, action = status(disabled, mins)
     if action == "needs re-login":
         need.append(email)
+    if disabled:
+        paused.append(email)
     print(f"{email:<34} {st:<11} {human_mins(mins):<18} {action}")
 print("-" * 82)
+print("TOKEN = OAuth access-token TTL (~8h, auto-refreshed). Not plan usage. Relogin only if EXPIRED.")
+if paused:
+    print("\n⏸  Paused (not used in round-robin): " + ", ".join(paused))
+    print("   Resume:  ccproxy resume <email-or-substring>")
 if need:
     print("\n⚠️  Needs re-login: " + ", ".join(need))
     print("   Run:  ccproxy relogin   (interactive Claude OAuth on the VPS)")
-else:
-    print("\n✅ All accounts active.")
+elif not paused:
+    print("\n✅ All accounts active in round-robin.")
+elif not need:
+    print("\n✅ Token OK on remaining accounts.")
 PY
   rm -f "$tmp"
 }

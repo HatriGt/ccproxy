@@ -21,6 +21,8 @@ alias cce='ccproxy env'         # show settings
 alias cca='ccproxy accounts'    # Claude account status
 alias ccst='ccproxy stats'      # token usage + Claude plan limits
 alias ccl='ccproxy live'        # live request logs + prompts
+alias ccpause='ccproxy pause'   # exclude account from round-robin
+alias ccresume='ccproxy resume' # put account back in round-robin
 
 # Optional: tab-complete subcommands
 if [[ -n "${ZSH_VERSION:-}" ]] && command -v compdef >/dev/null 2>&1; then
@@ -36,6 +38,9 @@ if [[ -n "${ZSH_VERSION:-}" ]] && command -v compdef >/dev/null 2>&1; then
       'url:Print Cursor base URL'
       'env:Show key settings'
       'accounts:Claude account status'
+      'pause:Exclude account from round-robin'
+      'resume:Put account back in round-robin'
+      'limits:Claude plan limits per account'
       'models:List model aliases'
       'add-model:Add a model alias'
       'remove-model:Remove a model alias'

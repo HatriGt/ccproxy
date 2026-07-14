@@ -50,7 +50,9 @@ Commands:
   build, b        Build Docker images locally
   url             Print Cursor base URL (copy/paste)
   env             Show key settings
-  accounts, acc   Claude account status (active/expired/needs re-login)
+  accounts, acc   Claude account status (active/paused/expired)
+  pause           Exclude account from round-robin: pause <email-or-substring>
+  resume          Put account back in round-robin: resume <email-or-substring>
   limits          Claude plan limits (5-hour + weekly) per account
   models          List Claude model aliases
   add-model       Add/update alias: add-model <alias> <upstream-name>
@@ -134,6 +136,22 @@ case "$cmd" in
     ;;
   accounts|acc)
     exec "${SCRIPTS}/accounts-status.sh" "$@"
+    ;;
+  pause|disable)
+    if [[ $# -lt 1 ]]; then
+      echo "Usage: ccproxy pause <email-or-substring>" >&2
+      echo "Example: ccproxy pause harish" >&2
+      exit 2
+    fi
+    exec "${SCRIPTS}/account-route.sh" pause "$@"
+    ;;
+  resume|enable|unpause)
+    if [[ $# -lt 1 ]]; then
+      echo "Usage: ccproxy resume <email-or-substring>" >&2
+      echo "Example: ccproxy resume harish" >&2
+      exit 2
+    fi
+    exec "${SCRIPTS}/account-route.sh" resume "$@"
     ;;
   limits)
     exec "${SCRIPTS}/claude-limits.sh" "$@"
