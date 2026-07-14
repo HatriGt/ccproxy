@@ -8,7 +8,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 source "${ROOT}/scripts/load-env.sh"
 
 TARGET="${USAGE_STATS_TARGET:-remote}"
-VPS_HOST="${VPS_SSH_HOST:-${CLIPROXY_VPS_SSH_HOST:-akvps}}"
+VPS_HOST="${VPS_SSH_HOST:-${CLIPROXY_VPS_SSH_HOST:-hostbrr}}"
 
 # Default: last 7 days if no args passed.
 ARGS=("$@")
@@ -53,7 +53,18 @@ echo ""
 
 case "$TARGET" in
   local) _run_local ;;
-  remote) _run_remote ;;
+  remote)
+    _run_remote
+    # After token table, also show live Claude plan limits (skip for --json).
+    show_limits=true
+    for a in "${ARGS[@]}"; do
+      [[ "$a" == "--json" ]] && show_limits=false
+    done
+    if [[ "$show_limits" == true ]]; then
+      echo ""
+      LIMITS_TARGET=remote bash "${ROOT}/scripts/claude-limits.sh"
+    fi
+    ;;
   *)
     echo "Unknown target: $TARGET (use local|remote)" >&2
     exit 2

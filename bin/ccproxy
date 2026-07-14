@@ -51,12 +51,13 @@ Commands:
   url             Print Cursor base URL (copy/paste)
   env             Show key settings
   accounts, acc   Claude account status (active/expired/needs re-login)
+  limits          Claude plan limits (5-hour + weekly) per account
   models          List Claude model aliases
   add-model       Add/update alias: add-model <alias> <upstream-name>
                   Effort: suffix -low/-medium/-high auto-sets thinking effort
                   (e.g. add-model ak-claude-opus-4.9-low claude-opus-4-9)
   remove-model    Remove a model alias: remove-model <alias>
-  stats           Day-wise token usage per user (usage-tracker)
+  stats           Token usage + Claude plan limits per account
   live            Live request logs with prompts (temporarily enables request-log)
   ssh             SSH to VPS
   logs            Tail docker stdout logs on VPS (api + shim)
@@ -133,6 +134,9 @@ case "$cmd" in
     ;;
   accounts|acc)
     exec "${SCRIPTS}/accounts-status.sh" "$@"
+    ;;
+  limits)
+    exec "${SCRIPTS}/claude-limits.sh" "$@"
     ;;
   models)
     exec "${SCRIPTS}/models.sh" list "$@"

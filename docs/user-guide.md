@@ -25,7 +25,8 @@ Adds `ccproxy` to `~/.local/bin` and short aliases to your shell.
 | `ccproxy models` | List model aliases |
 | `ccproxy add-model` | Add/update alias (`--help` shows examples) |
 | `ccproxy remove-model` | Remove an alias |
-| `ccst` | Token usage stats |
+| `ccst` | Token usage + Claude plan limits (5h / weekly) |
+| `ccproxy limits` | Claude plan limits only (per account) |
 | `ccl` | Live request logs |
 
 ## Model aliases & effort
@@ -38,6 +39,16 @@ ccproxy add-model --help   # usage + effort examples
 ```
 
 Alias suffix `-low` / `-medium` / `-high` (pattern `ak-claude-*-…`) auto-sets Claude adaptive effort. Always use a plain upstream id (e.g. `claude-opus-4-9`), never `claude-opus-4-9(low)`.
+
+## Claude plan limits (5-hour / weekly)
+
+Same numbers as Claude Settings → Usage. Per OAuth account on the VPS:
+
+```bash
+ccproxy limits                 # plan limits only
+ccproxy stats                  # token usage table, then plan limits
+ccst                           # shortcut for stats
+```
 
 ## Without aliases
 

@@ -19,7 +19,7 @@ alias ccd='ccproxy deploy'      # redeploy VPS
 alias ccu='ccproxy url'         # print Cursor base URL
 alias cce='ccproxy env'         # show settings
 alias cca='ccproxy accounts'    # Claude account status
-alias ccst='ccproxy stats'      # token usage per user
+alias ccst='ccproxy stats'      # token usage + Claude plan limits
 alias ccl='ccproxy live'        # live request logs + prompts
 
 # Optional: tab-complete subcommands
