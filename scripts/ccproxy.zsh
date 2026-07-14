@@ -23,6 +23,7 @@ alias ccst='ccproxy stats'      # token usage + Claude plan limits
 alias ccl='ccproxy live'        # live request logs + prompts
 alias ccpause='ccproxy pause'   # exclude account from round-robin
 alias ccresume='ccproxy resume' # put account back in round-robin
+alias cccodex='ccproxy codex'   # Codex helpers (helper model / config)
 
 # Optional: tab-complete subcommands
 if [[ -n "${ZSH_VERSION:-}" ]] && command -v compdef >/dev/null 2>&1; then
@@ -44,6 +45,7 @@ if [[ -n "${ZSH_VERSION:-}" ]] && command -v compdef >/dev/null 2>&1; then
       'models:List model aliases'
       'add-model:Add a model alias'
       'remove-model:Remove a model alias'
+      'codex:Codex helper model + config'
       'stats:Day-wise token usage per user'
       'live:Live request logs with prompts'
       'logs:Docker stdout logs on VPS'

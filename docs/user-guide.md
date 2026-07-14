@@ -1,5 +1,7 @@
 # User guide — daily commands
 
+ccproxy serves **Cursor** and **Codex** on one HTTPS base URL (`ccu`).
+
 ## One-time install (zsh shortcuts)
 
 ```bash
@@ -19,7 +21,7 @@ Adds `ccproxy` to `~/.local/bin` and short aliases to your shell.
 | `ccr` | Claude login / re-login on VPS |
 | `ccproxy login` | Same as `ccproxy relogin` |
 | `ccd` | Redeploy to VPS |
-| `ccu` | Print Cursor base URL |
+| `ccu` | Print shared base URL (Cursor + Codex) |
 | `cce` | Show key env settings |
 | `ccp help` | Full command list |
 | `ccproxy models` | List model aliases |
@@ -29,6 +31,8 @@ Adds `ccproxy` to `~/.local/bin` and short aliases to your shell.
 | `ccproxy limits` | Claude plan limits only (per account) |
 | `ccproxy pause <who>` | Exclude that Claude account from round-robin |
 | `ccproxy resume <who>` | Put it back in round-robin |
+| `ccproxy codex …` | Codex helpers (`helper-model`, `helpers`, `config`) |
+| `cccodex` | Shortcut for `ccproxy codex` |
 | `ccl` | Live request logs |
 
 ## Model aliases & effort
@@ -95,3 +99,19 @@ ccproxy status
 | Anthropic API Key | OFF |
 
 No daily startup — VPS Docker stack runs 24/7.
+
+## Codex desktop helper models (OpenAI IDs)
+
+Codex Desktop sometimes calls OpenAI helper models (`gpt-5.4-mini`, etc.) even
+when your main model is `ak-claude-opus-4.8`. Those IDs are remapped to a low
+Claude model so they don't 502 on Claude OAuth:
+
+```bash
+ccproxy codex                              # subcommand help
+ccproxy codex helper-model                 # show current helper mapping
+ccproxy codex helper-model ak-claude-haiku-4.5     # cheap/fast (default)
+ccproxy codex helper-model ak-claude-sonnet-4.6    # more quality for helpers
+ccproxy codex helpers                      # list OpenAI IDs that get remapped
+ccproxy codex config                       # print ~/.codex snippet (same URL as Cursor)
+cccodex helper-model                       # zsh shortcut (after install-shell)
+```

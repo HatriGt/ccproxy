@@ -3,34 +3,46 @@
 ## Production (VPS / Docker)
 
 ```
-┌─────────┐     HTTPS      ┌──────────────────┐     HTTP      ┌──────────────┐
-│ Cursor  │ ──────────────►│ Traefik (Dokploy)│ ────────────►│ cursor-shim  │
-│   IDE   │  :443 /v1/*    │  your domain     │  :8320 host  │  (Node.js)   │
-└─────────┘                └──────────────────┘               └──────┬───────┘
-                                                                     │
-                                                              Docker network
-                                                                     │
-                                                              ┌──────▼───────┐
-                                                              │ cli-proxy-api│
-                                                              │ (Go / OAuth) │
-                                                              └──────┬───────┘
-                                                                     │
-                                                              ┌──────▼───────┐
-                                                              │  Claude API  │
-                                                              └──────────────┘
+┌────────────┐
+│ Cursor IDE │──┐
+└────────────┘  │   HTTPS        ┌──────────────────┐     HTTP      ┌──────────────┐
+                ├───────────────►│ Traefik (Dokploy)│──────────────►│ gateway shim │
+┌────────────┐  │  :443 /v1/*    │  your domain     │  :8320 host  │  (Node.js)   │
+│ Codex      │──┘                └──────────────────┘               └──────┬───────┘
+│ desktop/CLI│                                                              │
+└────────────┘                                                       Docker network
+                                                                            │
+                                                                     ┌──────▼───────┐
+                                                                     │ cli-proxy-api│
+                                                                     │ (Go / OAuth) │
+                                                                     └──────┬───────┘
+                                                                            │
+                                                                     ┌──────▼───────┐
+                                                                     │  Claude API  │
+                                                                     └──────────────┘
 ```
+
+**Same base URL** (`CURSOR_BASE_URL`, e.g. `https://cliproxy.yourdomain.com/v1`) for both clients:
+
+| Client | Path | Shim behavior |
+|--------|------|----------------|
+| Cursor | `POST /v1/chat/completions` | Convert Anthropic-style tool blocks → OpenAI tools |
+| Codex | `POST /v1/responses` | Transparent proxy to CLIProxyAPI |
+| Both | `GET /v1/models` | Passthrough (aliases + helper OpenAI IDs) |
 
 ## Components
 
 | Component | Image / binary | Port | Role |
 |-----------|----------------|------|------|
-| **cursor-shim** | `ccproxy-cursor-shim:local` | 8320 (published on host) | Converts Cursor Agent’s Anthropic-style tool blocks to OpenAI format for CLIProxyAPI |
-| **cli-proxy-api** | `ccproxy-cli-proxy-api:local` (from [eceasy/cli-proxy-api](https://hub.docker.com/r/eceasy/cli-proxy-api)) | 8318 (internal) | Claude OAuth, model aliases, `/v1/chat/completions` |
-| **Traefik** | Dokploy-managed | 443 | TLS + route to `172.17.0.1:8320` |
+| **gateway shim** (`cursor-shim`) | `ccproxy-cursor-shim:local` | 8320 (published) | Cursor tool conversion + Codex Responses passthrough |
+| **cli-proxy-api** | `ccproxy-cli-proxy-api:local` (CLIProxyAPI) | 8318 (internal) | Claude OAuth, aliases, chat + responses |
+| **usage-tracker** | sidecar | — | Drains usage queue → SQLite |
+| **Traefik** | Dokploy-managed | 443 | TLS → `172.17.0.1:8320` |
 
 ## Why the shim exists
 
-Cursor Agent sends **Anthropic-native** message blocks (`tool_use`, `tool_result`) to OpenAI-compatible `/v1/chat/completions`. CLIProxyAPI’s OpenAI translator rejects those unless normalized. The shim fixes this without patching upstream.
+1. **Cursor Agent** sends Anthropic-native blocks (`tool_use`, `tool_result`) on OpenAI `/v1/chat/completions`. CLIProxyAPI’s OpenAI translator rejects those unless normalized.
+2. **Codex** needs `/v1/responses` on the **same** public hostname. The shim already pass-throughs non-chat paths to CLIProxyAPI (no second Traefik service).
 
 Source: `packages/cursor-shim/shim.mjs`
 
@@ -38,34 +50,31 @@ Source: `packages/cursor-shim/shim.mjs`
 
 | Data | Location |
 |------|----------|
-| Claude OAuth tokens | Docker volume `ccproxy_cliproxy-auth` → `/data/auth` in container |
-| Config | `config/config.yaml` (bind-mounted read-only) |
-
-## Legacy Mac relay (deprecated)
-
-Previously: Mac shim → SSH reverse tunnel → VPS socat → Traefik.
-
-`deploy-to-vps.sh` stops `cliproxy-relay-bridge.service` and points Traefik directly at Docker port `8320`.
+| Claude OAuth tokens | Volume → `/data/auth/claude-*.json` |
+| Model aliases | Volume → `/data/models/aliases.yaml` |
+| Codex helper mapping state | Volume → `/data/models/codex-helper.yaml` |
+| Usage SQLite | Volume → `/data/usage` |
+| Config template | `config/config.yaml.template` (rendered at start) |
 
 ## Model aliases
 
-Live aliases live in the `cliproxy-models` volume (`/data/models/aliases.yaml`),
-seeded from `config/model-aliases.default.yaml` and injected under
-`oauth-model-alias.claude` at container start. Manage with:
+Live aliases: `/data/models/aliases.yaml`, seeded from `config/model-aliases.default.yaml`.
 
 ```bash
 ccproxy models
 ccproxy add-model <alias> <upstream-name>
 ccproxy remove-model <alias>
+ccproxy codex helper-model [alias]   # remap gpt-5.4-mini etc. → low Claude
 ```
 
-Cursor typically uses:
+Typical names: `ak-claude-sonnet-4.6`, `ak-claude-opus-4.8`, effort variants `…-low` / `…-medium` / `…-high`.
 
-- `ak-claude-sonnet-4.6` (default health-check model)
-- `ak-claude-opus-4.8`, `ak-claude-opus-4.7`, etc.
-- Effort variants: `ak-claude-opus-4.8-low` / `-medium` / `-high`
+## Round-robin / pause
 
-Mapped to Anthropic model IDs via CLIProxyAPI. Effort suffixes match wildcard
-`payload.override` rules in `config/config.yaml.template` (`ak-claude-*-low` →
-`output_config.effort: low`, etc.). Upstream `name` must stay plain (no
-`(low)` parentheses).
+Multiple Claude OAuth accounts are load-balanced. Temporarily exclude one near plan limits:
+
+```bash
+ccproxy pause <email-or-substring>
+ccproxy resume <email-or-substring>
+ccproxy accounts
+```

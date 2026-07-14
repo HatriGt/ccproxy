@@ -2,38 +2,46 @@
 
 # ccproxy
 
-### Use Cursor with your Claude Code account
+### Use Cursor IDE & OpenAI Codex with your Claude Pro / Max subscription
 
-A one-command, self-hosted bridge that lets **Cursor IDE** run on your **Claude Pro/Max subscription** — the same account you use in Claude.ai and Claude Code.
+**Self-hosted OpenAI-compatible proxy** for Claude OAuth — no Anthropic pay-per-token API key.
+One HTTPS URL powers **Cursor Agent/chat** and **OpenAI Codex** (desktop + CLI).
 
+[![GitHub stars](https://img.shields.io/github/stars/HatriGt/ccproxy?style=social)](https://github.com/HatriGt/ccproxy/stargazers)
+[![GitHub forks](https://img.shields.io/github/forks/HatriGt/ccproxy?style=social)](https://github.com/HatriGt/ccproxy/fork)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](./LICENSE)
 [![Built on CLIProxyAPI](https://img.shields.io/badge/built%20on-CLIProxyAPI-blue)](https://github.com/router-for-me/CLIProxyAPI)
 [![Docker](https://img.shields.io/badge/deploy-Docker%20Compose-2496ED?logo=docker&logoColor=white)](./docker-compose.yml)
 [![Cursor](https://img.shields.io/badge/client-Cursor%20IDE-000000)](https://cursor.com)
+[![Codex](https://img.shields.io/badge/client-OpenAI%20Codex-10A37F)](https://openai.com/codex)
 [![Claude](https://img.shields.io/badge/models-Claude%20Sonnet%20%7C%20Opus-D97757)](https://www.anthropic.com)
 
+<img src="./docs/assets/ccproxy-social-preview.jpg" alt="ccproxy: Cursor and OpenAI Codex on Claude Pro Max — self-hosted OpenAI-compatible proxy" width="800" />
+
 ```
-Cursor  →  https://your-domain/v1  →  Claude (your subscription)
+Cursor  ─┐
+         ├─►  https://your-domain/v1  ─►  Claude (your subscription)
+Codex   ─┘
 ```
 
-[Quick start](#quick-start) · [How to use](#how-to-use) · [Architecture](#under-the-hood) · [Docs](./docs/README.md)
+[Quick start](#quick-start) · [Why ccproxy?](#why-ccproxy) · [Cursor](#how-to-use-claude-in-cursor-ide) · [Codex](#how-to-use-claude-in-openai-codex) · [FAQ](#faq) · [Docs](./docs/README.md)
 
 </div>
 
 ---
 
-## Overview
+## Why ccproxy?
 
-Cursor lets you point its model provider at any OpenAI-compatible endpoint. ccproxy is that endpoint — deployed on your own VPS — translating Cursor's requests and authenticating with **Claude OAuth** instead of a pay-per-token API key.
+Developers search for ways to run **Claude in Cursor** or **Claude in Codex** without burning Anthropic API credits. **ccproxy** is that bridge:
 
-Deploy it once, point Cursor at the URL, and use Claude models in Agent and chat with no further setup.
+| Need | What ccproxy does |
+|------|-------------------|
+| Cursor + Claude Pro/Max | OpenAI Base URL override → Claude via OAuth |
+| OpenAI Codex + Claude | Responses API (`/v1/responses`) on the same URL |
+| Avoid API key bills | Uses your Claude subscription sessions (CLIProxyAPI) |
+| Self-hosted control | Docker Compose on your VPS (Traefik / Dokploy ready) |
 
-| | |
-|---|---|
-| **Outcome** | Cursor (Agent + chat) running on your Claude subscription |
-| **Endpoint** | A stable HTTPS URL you set once in Cursor |
-| **Hosting** | Two small Docker containers on any VPS |
-| **Maintenance** | Re-login when OAuth expires (`ccr`); otherwise hands-off |
+Built on **[CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI)** with a small gateway shim so Cursor tool blocks and Codex Responses both work.
 
 ---
 
@@ -48,60 +56,76 @@ source ~/.zshrc
 
 ccproxy deploy                # build + start the stack on your VPS
 ccproxy relogin               # sign in to Claude (one time)
-ccu                           # prints the URL for Cursor
+ccu                           # prints the shared OpenAI-compatible base URL
 ```
 
 Full walkthrough: **[docs/setup-from-scratch.md](./docs/setup-from-scratch.md)**
 
 ---
 
-## How to use
-
-### 1. Configure Cursor (once)
+## How to use Claude in Cursor IDE
 
 **Cursor → Settings → Models:**
 
 | Setting | Value |
 |---------|-------|
 | Override OpenAI Base URL | output of `ccu` (e.g. `https://cliproxy.yourdomain.com/v1`) |
-| OpenAI API Key | `dummy` (or your own secret) |
+| OpenAI API Key | `dummy` (or your `CLIPROXY_API_KEY`) |
 | Anthropic API Key | **Off** |
 
-Reload the window (`Cmd/Ctrl+Shift+P` → *Developer: Reload Window*), then select a model such as `ak-claude-sonnet-4.6`, `ak-claude-opus-4.8`, or an effort variant like `ak-claude-opus-4.8-low`.
+Reload the window, then pick `ak-claude-sonnet-4.6`, `ak-claude-opus-4.8`, or an effort variant (`…-low` / `…-medium` / `…-high`).
+
+Details: **[docs/cursor-configuration.md](./docs/cursor-configuration.md)**
 
 ### Model aliases & effort
-
-Add or update Cursor-visible models without a full redeploy:
 
 ```bash
 ccproxy models
 ccproxy add-model ak-claude-opus-4.9 claude-opus-4-9
-ccproxy add-model --help    # shows usage + effort examples
+ccproxy add-model ak-claude-opus-4.9-low claude-opus-4-9   # auto effort=low
 ```
 
-**Effort / thinking** (saves tokens on Claude 4.6+): name the alias with `-low`, `-medium`, or `-high` and point it at the **plain** upstream model. Wildcard rules inject `output_config.effort` automatically.
+Do **not** put `(low)` / `(high)` in the upstream name.
+
+---
+
+## How to use Claude in OpenAI Codex
+
+Same URL as Cursor. Codex uses the **Responses** API; configure a custom provider (desktop + CLI):
 
 ```bash
-ccproxy add-model ak-claude-opus-4.9-low    claude-opus-4-9
-ccproxy add-model ak-claude-opus-4.9-medium claude-opus-4-9
-ccproxy add-model ak-claude-opus-4.9-high   claude-opus-4-9
+ccproxy codex config                 # print ~/.codex snippet
+ccproxy codex helper-model           # map gpt-5.4-mini → Haiku (avoids 502s)
 ```
 
-Do **not** put `(low)` / `(high)` in the upstream name — that breaks routing.
+Typical provider block (from `ccproxy codex config`):
 
-### 2. Work
+- `base_url` = same as `ccu`
+- `wire_api = "responses"`
+- `model` = `ak-claude-opus-4.8` (or another `ak-claude-*` alias)
+- `supports_websockets = false`
 
-Open Cursor and use it normally — the server stays online without your machine.
+Guide: **[docs/codex-configuration.md](./docs/codex-configuration.md)**
 
-### 3. Maintain
+| Command | Purpose |
+|---------|---------|
+| `ccproxy codex helper-model [alias]` | Claude model for OpenAI helper side-calls |
+| `ccproxy codex helpers` | List OpenAI IDs that get remapped |
+| `ccproxy codex config` | Print desktop/CLI config snippet |
 
-| Command | When to run |
-|---------|-------------|
-| `cch` | Verify the endpoint is healthy |
-| `ccr` | Chat fails or reports `auth_unavailable` |
-| `ccu` | Need the URL again for Cursor |
-| `ccs` | Inspect Claude auth status |
-| `ccd` | Redeploy after pulling updates |
+---
+
+## Daily ops
+
+| Command | When |
+|---------|------|
+| `cch` | Health check |
+| `ccr` | Claude OAuth re-login |
+| `ccu` | Print shared base URL |
+| `ccs` / `ccproxy accounts` | Auth + pause status |
+| `ccproxy pause` / `resume` | Drop a Claude account from round-robin |
+| `cccodex` | Codex subcommands |
+| `ccd` | Redeploy |
 
 Daily reference: **[docs/user-guide.md](./docs/user-guide.md)**
 
@@ -109,32 +133,56 @@ Daily reference: **[docs/user-guide.md](./docs/user-guide.md)**
 
 ## Under the hood
 
-ccproxy runs a two-service stack behind your domain:
-
 ```
-┌────────────┐   HTTPS    ┌─────────────────┐   :8320   ┌──────────────┐   :8318   ┌──────────────┐
-│ Cursor IDE │ ─────────► │ Traefik (Dokploy)│ ────────► │  cursor-shim │ ────────► │ CLIProxyAPI  │ ──► Claude
-│  /v1/*     │            │   your domain    │           │ (format fix) │           │ (OAuth)      │
-└────────────┘            └─────────────────┘           └──────────────┘           └──────────────┘
+┌────────────┐
+│ Cursor IDE │──┐  HTTPS   ┌─────────────────┐  :8320  ┌──────────────┐  :8318  ┌──────────────┐
+└────────────┘  ├─────────►│ Traefik (Dokploy)│────────►│ gateway shim │───────►│ CLIProxyAPI  │──► Claude
+┌────────────┐  │          │   your domain    │         │ chat+pass/   │        │ (OAuth)      │
+│   Codex    │──┘          └─────────────────┘         │  responses   │        └──────────────┘
+└────────────┘                                         └──────────────┘
 ```
 
 | Component | Responsibility |
 |-----------|----------------|
-| **[CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI)** | Authenticates with your Claude account via OAuth, manages token refresh and model aliases, serves `/v1/chat/completions` |
-| **cursor-shim** | Translates Cursor Agent's Anthropic-style tool blocks (`tool_use` / `tool_result`) into the OpenAI shape CLIProxyAPI expects |
-| **Traefik / Dokploy** | Terminates TLS and routes your domain to the shim (Cursor Agent requires public HTTPS, not `localhost`) |
-| **Docker Compose** | Runs and supervises both containers; OAuth tokens persist in a named volume |
+| **[CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI)** | Claude OAuth, aliases, `/v1/chat/completions` **and** `/v1/responses` |
+| **cursor-shim** (gateway) | Cursor tool-block conversion; transparent proxy for Codex `/v1/responses` |
+| **Traefik / Dokploy** | TLS → host port `8320` |
+| **Docker Compose** | Stack + persistent auth / models / usage volumes |
 
 Deep dive: **[docs/architecture.md](./docs/architecture.md)**
 
 ---
 
+## FAQ
+
+### Can I use Claude with Cursor without an Anthropic API key?
+
+Yes. ccproxy authenticates with your **Claude Pro/Max** OAuth session (same family of login as Claude.ai / Claude Code), then exposes an OpenAI-compatible base URL for Cursor’s override.
+
+### Can OpenAI Codex use Claude models?
+
+Yes. Point Codex at the same `base_url`, set `wire_api = "responses"`, and choose an `ak-claude-*` model. Helper OpenAI model IDs (`gpt-5.4-mini`, etc.) are remapped with `ccproxy codex helper-model`.
+
+### Is this the same as Claude Code CLIProxyAPI / cliproxy?
+
+ccproxy **wraps CLIProxyAPI** in Docker with a public HTTPS gateway tuned for Cursor + Codex. Upstream protocol work is [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI); this repo adds deploy scripts, the Cursor/Codex gateway shim, aliases, and ops CLI.
+
+### Does Cursor Agent work on localhost?
+
+Usually **no** — Cursor Agent expects a **public HTTPS** URL. Deploy to a VPS (Dokploy/Traefik works well).
+
+### What models are supported?
+
+Whatever your Claude subscription + CLIProxyAPI expose — typically Claude Sonnet and Opus, plus your `ak-claude-*` aliases and effort variants.
+
+---
+
 ## Requirements
 
-- A **VPS** with Docker and Docker Compose v2+ (tested with [Dokploy](https://dokploy.com) + Traefik)
-- A **domain** with an A record pointing to the VPS
+- A **VPS** with Docker and Docker Compose v2+ (Dokploy + Traefik works well)
+- A **domain** A record → VPS
 - A **Claude Pro/Max** subscription
-- **Cursor** with the OpenAI provider override
+- **Cursor** and/or **OpenAI Codex** (desktop or CLI)
 
 ---
 
@@ -142,14 +190,15 @@ Deep dive: **[docs/architecture.md](./docs/architecture.md)**
 
 | Guide | Purpose |
 |-------|---------|
-| [setup-from-scratch.md](./docs/setup-from-scratch.md) | End-to-end install (humans & AI agents) |
-| [user-guide.md](./docs/user-guide.md) | Daily commands and shortcuts |
-| [architecture.md](./docs/architecture.md) | Components, ports, request flow |
-| [cursor-configuration.md](./docs/cursor-configuration.md) | Cursor IDE settings and troubleshooting |
-| [claude-oauth.md](./docs/claude-oauth.md) | Login, re-login, token handling |
-| [dokploy-traefik.md](./docs/dokploy-traefik.md) | Routing and TLS on the VPS |
-| [operations.md](./docs/operations.md) | Scripts, health checks, troubleshooting |
-| [environment-variables.md](./docs/environment-variables.md) | Full `.env` reference |
+| [setup-from-scratch.md](./docs/setup-from-scratch.md) | End-to-end install |
+| [user-guide.md](./docs/user-guide.md) | Daily commands |
+| [architecture.md](./docs/architecture.md) | Components and flow |
+| [cursor-configuration.md](./docs/cursor-configuration.md) | Cursor IDE |
+| [codex-configuration.md](./docs/codex-configuration.md) | Codex desktop + CLI |
+| [claude-oauth.md](./docs/claude-oauth.md) | Login, accounts, pause |
+| [dokploy-traefik.md](./docs/dokploy-traefik.md) | Routing / TLS |
+| [operations.md](./docs/operations.md) | Scripts and troubleshooting |
+| [environment-variables.md](./docs/environment-variables.md) | `.env` reference |
 
 ---
 
@@ -157,15 +206,23 @@ Deep dive: **[docs/architecture.md](./docs/architecture.md)**
 
 ```
 ccproxy/
-├── bin/ccproxy            # CLI entrypoint (ccproxy <command>)
-├── packages/cursor-shim/  # Request format translator (Node.js)
-├── images/                # Dockerfiles for proxy and shim
-├── config/                # CLIProxyAPI config, model aliases, API keys
-├── scripts/               # deploy, health-check, oauth, install-shell
-├── deploy/                # Traefik / Cloudflare reference configs
+├── bin/ccproxy            # CLI (ccproxy <command>, including `codex`)
+├── packages/cursor-shim/  # Gateway: Cursor format fix + Responses passthrough
+├── images/                # Dockerfiles
+├── config/                # Model aliases (incl. Codex helper OpenAI IDs)
+├── scripts/               # deploy, oauth, codex helper-model, …
+├── deploy/                # Traefik / Cloudflare samples
 ├── docs/                  # Documentation
-└── docker-compose.yml     # VPS stack definition
+└── docker-compose.yml
 ```
+
+---
+
+## Contributing & discovery
+
+If this saves you API spend, a **⭐ star** helps others find Cursor + Codex + Claude setups on GitHub and Google.
+
+Issues and PRs welcome for docs, aliases, and deploy fixes. Keep secrets out of commits (`.env`, `claude-*.json`).
 
 ---
 

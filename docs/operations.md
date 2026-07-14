@@ -14,6 +14,14 @@
 | `scripts/setup-vps-traefik.sh` | Point Traefik at Docker shim |
 | `scripts/start-local-shim.sh` | Mac dev shim → local VibeProxy |
 | `scripts/load-env.sh` | Source `.env` |
+| `bin/ccproxy` / `ccproxy codex …` | Daily CLI; Codex helper-model mapping |
+
+## Clients on one URL
+
+| Client | Path | Notes |
+|--------|------|--------|
+| Cursor | `/v1/chat/completions` | Tool-block conversion in shim |
+| Codex | `/v1/responses` | Passthrough; map helpers with `ccproxy codex helper-model` |
 
 ## Redeploy after code changes
 

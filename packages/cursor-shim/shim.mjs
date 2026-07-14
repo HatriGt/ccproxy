@@ -1,10 +1,13 @@
 #!/usr/bin/env node
 /**
- * Cursor ↔ CLIProxyAPI compatibility shim.
+ * Cursor + Codex ↔ CLIProxyAPI gateway.
  *
  * Cursor Agent sends Anthropic-native messages (tool_use / tool_result blocks) to
  * OpenAI /v1/chat/completions. CLIProxyAPI's OpenAI translator rejects those.
  * This shim converts them to OpenAI tool format before forwarding upstream.
+ *
+ * Codex uses POST /v1/responses on the same public URL; those requests are
+ * proxied through unchanged (plus GET /v1/models and other non-chat paths).
  */
 
 import http from "node:http";

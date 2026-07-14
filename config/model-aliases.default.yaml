@@ -26,3 +26,22 @@
   name: claude-opus-4-6
 - alias: ak-claude-haiku-4.5
   name: claude-haiku-4-5-20251001
+# OpenAI / Codex desktop helper IDs → low Claude (override live with
+# `ccproxy codex helper-model <alias>`). Needed so gpt-5.4-mini side-calls
+# don't 502 on Claude-only OAuth.
+- alias: gpt-5.4-mini
+  name: claude-haiku-4-5-20251001
+- alias: gpt-5.4
+  name: claude-haiku-4-5-20251001
+- alias: gpt-5.5-mini
+  name: claude-haiku-4-5-20251001
+- alias: gpt-5-mini
+  name: claude-haiku-4-5-20251001
+- alias: gpt-4.1-mini
+  name: claude-haiku-4-5-20251001
+- alias: gpt-4o-mini
+  name: claude-haiku-4-5-20251001
+- alias: o4-mini
+  name: claude-haiku-4-5-20251001
+- alias: o3-mini
+  name: claude-haiku-4-5-20251001

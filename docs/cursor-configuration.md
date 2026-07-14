@@ -1,5 +1,7 @@
 # Cursor IDE configuration
 
+Same public base URL as Codex (`ccu`). Codex setup: [codex-configuration.md](./codex-configuration.md).
+
 ## Required settings
 
 Open **Cursor → Settings → Models** (or **Cursor Settings → Models**).

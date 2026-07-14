@@ -59,6 +59,7 @@ Commands:
                   Effort: suffix -low/-medium/-high auto-sets thinking effort
                   (e.g. add-model ak-claude-opus-4.9-low claude-opus-4-9)
   remove-model    Remove a model alias: remove-model <alias>
+  codex           Codex: codex helper-model|helpers|config
   stats           Token usage + Claude plan limits per account
   live            Live request logs with prompts (temporarily enables request-log)
   ssh             SSH to VPS
@@ -74,6 +75,7 @@ Zsh shortcuts (after ./scripts/install-shell.sh):
   ccd             ccproxy deploy
   ccst            ccproxy stats
   ccl             ccproxy live
+  cccodex         ccproxy codex
 
 Repo: ${CCPROXY_HOME}
 Cursor URL: \${CURSOR_BASE_URL:-https://cliproxy.yourdomain.com/v1}
@@ -164,6 +166,9 @@ case "$cmd" in
     ;;
   remove-model)
     exec "${SCRIPTS}/models.sh" remove "$@"
+    ;;
+  codex|cdx)
+    exec "${SCRIPTS}/codex.sh" "$@"
     ;;
   stats)
     exec "${SCRIPTS}/usage-stats.sh" "$@"

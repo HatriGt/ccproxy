@@ -1,8 +1,14 @@
 # Setup from scratch
 
-Complete guide to run **ccproxy** — CLIProxyAPI + Cursor shim on a VPS with a stable HTTPS URL for Cursor IDE.
+Complete guide to run **ccproxy** — CLIProxyAPI + Cursor/Codex gateway on a VPS with one stable HTTPS URL for both clients.
 
-Target outcome: Cursor → `https://cliproxy.yourdomain.com/v1` → Claude via subscription OAuth.
+Target outcome:
+
+```
+Cursor  ─┐
+         ├─►  https://cliproxy.yourdomain.com/v1  ─►  Claude (subscription OAuth)
+Codex   ─┘
+```
 
 ---
 
@@ -24,7 +30,7 @@ Target outcome: Cursor → `https://cliproxy.yourdomain.com/v1` → Claude via s
 ### Accounts
 
 - **Claude** subscription (Claude Pro/Max) for OAuth login
-- **Cursor** with ability to set OpenAI API override
+- **Cursor** (OpenAI API override) and/or **Codex** desktop/CLI
 
 ---
 
@@ -42,11 +48,11 @@ Edit `.env` — minimum required changes:
 |----------|---------|-------|
 | `PUBLIC_HOSTNAME` | `cliproxy.yourdomain.com` | DNS A record to VPS |
 | `PUBLIC_URL` | `https://cliproxy.yourdomain.com` | |
-| `CURSOR_BASE_URL` | `https://cliproxy.yourdomain.com/v1` | Cursor uses this |
+| `CURSOR_BASE_URL` | `https://cliproxy.yourdomain.com/v1` | Shared base URL (Cursor + Codex) |
 | `VPS_SSH_HOST` | `your-vps` | SSH config host alias or `user@ip` |
 | `VPS_DEPLOY_DIR` | `/opt/ccproxy` | Remote install path |
 | `VPS_PUBLIC_IP` | `203.0.113.10` | For DNS verification |
-| `CLIPROXY_API_KEY` | `dummy` or a long random string | Cursor “OpenAI API Key” |
+| `CLIPROXY_API_KEY` | `dummy` or a long random string | Cursor OpenAI key / Codex bearer |
 
 Optional but recommended before public exposure:
 
@@ -163,6 +169,19 @@ Reload Cursor: `Cmd+Shift+P` → **Developer: Reload Window**.
 
 ---
 
+## Step 5b — Configure Codex (optional)
+
+Same base URL. See [codex-configuration.md](./codex-configuration.md).
+
+```bash
+ccproxy codex config          # print ~/.codex snippet
+ccproxy codex helper-model    # map Desktop helper IDs → Haiku (default)
+```
+
+Use `wire_api = "responses"`, model `ak-claude-opus-4.8` (or Sonnet), and `supports_websockets = false`. Fully quit and reopen Codex after editing `~/.codex/config.toml`.
+
+---
+
 ## Step 6 — Dokploy (optional UI)
 
 If you use Dokploy instead of manual Traefik files:
@@ -184,7 +203,7 @@ Manual Traefik snippet: [dokploy-traefik.md](./dokploy-traefik.md).
 ./scripts/start-local-shim.sh
 ```
 
-Note: Cursor **Agent mode blocks localhost** — use VPS HTTPS for agent.
+Note: Cursor **Agent mode** and Codex Desktop need a **public HTTPS** URL — localhost is not enough for Agent.
 
 ### Local Docker smoke test
 
@@ -207,12 +226,14 @@ When automating this setup, verify in order:
 - [ ] `./scripts/deploy-to-vps.sh` completes
 - [ ] If health check exit `1`: run `./scripts/claude-relogin.sh` (requires interactive OAuth)
 - [ ] `./scripts/health-check.sh "$CURSOR_BASE_URL"` exit `0`
-- [ ] Document `CURSOR_BASE_URL` and `CLIPROXY_API_KEY` for Cursor settings
+- [ ] Document `CURSOR_BASE_URL` and `CLIPROXY_API_KEY` for Cursor / Codex
+- [ ] (Optional) `ccproxy codex helper-model` + Codex provider configured
 
 ---
 
 ## Related docs
 
 - [architecture.md](./architecture.md)
+- [codex-configuration.md](./codex-configuration.md)
 - [claude-oauth.md](./claude-oauth.md)
 - [operations.md](./operations.md)
