@@ -98,10 +98,27 @@ function convertTools(tools) {
 function convertMessages(messages) {
   /** @type {Array<Record<string, unknown>>} */
   const out = [];
-  // Track tool_use ids emitted as assistant tool_calls so we never emit an
-  // orphaned tool_result. Anthropic rejects a tool_result whose tool_use_id has
-  // no matching tool_use in the previous message (common when the assistant turn
-  // is thinking-only, e.g. Opus 5 with effort). Orphans are folded into user text.
+  // Anthropic enforces strict tool pairing and rejects either orphan direction:
+  //  - a tool_result whose tool_use_id has no matching tool_use in the previous
+  //    message (common when an assistant turn is thinking-only, e.g. Opus 5 with
+  //    effort), and
+  //  - a tool_use with no tool_result immediately after (e.g. the user cancels or
+  //    edits history mid tool-call).
+  // Pre-scan every tool_result id so we can drop assistant tool_calls that will
+  // never get a result (folded into text), and fold orphan results into user text.
+  const resultIds = new Set();
+  for (const msg of messages) {
+    if (msg.role !== "user" || !isAnthropicContent(msg.content)) {
+      continue;
+    }
+    for (const block of /** @type {Array<Record<string, unknown>>} */ (msg.content)) {
+      if (block && block.type === "tool_result" && block.tool_use_id != null) {
+        resultIds.add(block.tool_use_id);
+      }
+    }
+  }
+  // tool_use ids actually emitted as assistant tool_calls, so a following
+  // tool_result only becomes a role:"tool" message when its call survived.
   const knownToolCallIds = new Set();
 
   for (const msg of messages) {
@@ -162,7 +179,14 @@ function convertMessages(messages) {
         if (block.type === "text" && typeof block.text === "string" && block.text) {
           textParts.push(block.text);
         } else if (block.type === "tool_use") {
-          toolUses.push(block);
+          // Drop tool_uses with no matching tool_result anywhere; keeping them
+          // would leave a dangling tool_call that Anthropic rejects. Preserve the
+          // intent as text so the model still sees what it tried to do.
+          if (resultIds.has(block.id)) {
+            toolUses.push(block);
+          } else {
+            textParts.push(`[called ${block.name}(${JSON.stringify(block.input ?? {})})]`);
+          }
         }
       }
 
