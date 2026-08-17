@@ -221,12 +221,105 @@ function convertMessages(messages) {
 }
 
 /**
+ * Final safety pass on OpenAI-format messages: guarantee every role:"tool"
+ * message pairs with a tool_call id in the immediately-preceding assistant
+ * message, and every assistant tool_call has a following tool response.
+ *
+ * Cursor can send histories where assistant turns are plain-text strings
+ * (already OpenAI-ish, so the Anthropic block converter skips them) while the
+ * tool results arrive as separate role:"tool" messages whose matching
+ * tool_calls are absent. CLIProxyAPI re-expands those into Anthropic
+ * tool_result blocks, and Anthropic then rejects the orphans in both
+ * directions. We repair the sequence here regardless of input shape.
+ *
+ * @param {Array<Record<string, unknown>>} messages
+ * @returns {Array<Record<string, unknown>>}
+ */
+function normalizeToolPairing(messages) {
+  if (!Array.isArray(messages)) {
+    return messages;
+  }
+
+  // Ids that have a role:"tool" response somewhere after an assistant tool_call.
+  const respondedIds = new Set();
+  for (const m of messages) {
+    if (m && m.role === "tool" && m.tool_call_id != null) {
+      respondedIds.add(m.tool_call_id);
+    }
+  }
+
+  /** @type {Array<Record<string, unknown>>} */
+  const out = [];
+  const openToolCallIds = new Set();
+
+  for (const msg of messages) {
+    if (!msg || typeof msg !== "object") {
+      out.push(msg);
+      continue;
+    }
+
+    if (msg.role === "assistant" && Array.isArray(msg.tool_calls)) {
+      // Keep only tool_calls that actually get a tool response; others would
+      // dangle. Attempted-but-unanswered calls are preserved as text.
+      const kept = [];
+      const droppedText = [];
+      for (const tc of msg.tool_calls) {
+        if (tc && tc.id != null && respondedIds.has(tc.id)) {
+          kept.push(tc);
+          openToolCallIds.add(tc.id);
+        } else if (tc) {
+          const fn = tc.function || {};
+          droppedText.push(`[called ${fn.name ?? "tool"}(${fn.arguments ?? "{}"})]`);
+        }
+      }
+      const next = { ...msg };
+      if (kept.length > 0) {
+        next.tool_calls = kept;
+      } else {
+        delete next.tool_calls;
+      }
+      if (droppedText.length > 0) {
+        const base = typeof next.content === "string" ? next.content : "";
+        next.content = [base, ...droppedText].filter(Boolean).join("\n");
+      }
+      if (next.content == null && !next.tool_calls) {
+        next.content = "";
+      }
+      out.push(next);
+      continue;
+    }
+
+    if (msg.role === "tool") {
+      // Orphan tool result (no matching open tool_call) → fold into user text.
+      if (msg.tool_call_id == null || !openToolCallIds.has(msg.tool_call_id)) {
+        out.push({ role: "user", content: flattenToolResultContent(msg.content) });
+        continue;
+      }
+      openToolCallIds.delete(msg.tool_call_id);
+      out.push(msg);
+      continue;
+    }
+
+    out.push(msg);
+  }
+
+  return out;
+}
+
+/**
  * @param {Record<string, unknown>} body
  * @returns {boolean}
  */
 function needsConversion(body) {
   if (Array.isArray(body.messages)) {
-    return body.messages.some((m) => isAnthropicContent(m?.content));
+    if (body.messages.some((m) => isAnthropicContent(m?.content))) {
+      return true;
+    }
+    // Also normalize plain OpenAI-shaped histories that contain tool messages,
+    // since Cursor may send orphaned tool/tool_call pairs that Anthropic rejects.
+    if (body.messages.some((m) => m?.role === "tool" || Array.isArray(m?.tool_calls))) {
+      return true;
+    }
   }
   if (Array.isArray(body.tools) && body.tools[0]?.name && !body.tools[0]?.type) {
     return true;
@@ -241,7 +334,9 @@ function needsConversion(body) {
 function convertRequestBody(body) {
   const next = { ...body };
   if (Array.isArray(body.messages)) {
-    next.messages = convertMessages(/** @type {Array<Record<string, unknown>>} */ (body.messages));
+    next.messages = normalizeToolPairing(
+      convertMessages(/** @type {Array<Record<string, unknown>>} */ (body.messages))
+    );
   }
   if (Array.isArray(body.tools)) {
     next.tools = convertTools(/** @type {Array<Record<string, unknown>>} */ (body.tools));
