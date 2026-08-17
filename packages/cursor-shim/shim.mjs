@@ -98,6 +98,11 @@ function convertTools(tools) {
 function convertMessages(messages) {
   /** @type {Array<Record<string, unknown>>} */
   const out = [];
+  // Track tool_use ids emitted as assistant tool_calls so we never emit an
+  // orphaned tool_result. Anthropic rejects a tool_result whose tool_use_id has
+  // no matching tool_use in the previous message (common when the assistant turn
+  // is thinking-only, e.g. Opus 5 with effort). Orphans are folded into user text.
+  const knownToolCallIds = new Set();
 
   for (const msg of messages) {
     const role = msg.role;
@@ -114,21 +119,33 @@ function convertMessages(messages) {
     if (role === "user") {
       const textParts = [];
       const toolResults = [];
+      const orphanResults = [];
 
       for (const block of blocks) {
         if (block.type === "text" && typeof block.text === "string" && block.text.trim()) {
           textParts.push(block.text);
         } else if (block.type === "tool_result") {
-          toolResults.push(block);
+          if (knownToolCallIds.has(block.tool_use_id)) {
+            toolResults.push(block);
+          } else {
+            orphanResults.push(block);
+          }
         }
       }
 
       for (const tr of toolResults) {
+        knownToolCallIds.delete(tr.tool_use_id);
         out.push({
           role: "tool",
           tool_call_id: tr.tool_use_id,
           content: flattenToolResultContent(tr.content),
         });
+      }
+
+      // Fold orphaned tool results into plain user text so context is preserved
+      // without violating the tool_use/tool_result pairing contract.
+      for (const tr of orphanResults) {
+        textParts.push(flattenToolResultContent(tr.content));
       }
 
       if (textParts.length > 0) {
@@ -164,6 +181,9 @@ function convertMessages(messages) {
             arguments: JSON.stringify(tu.input ?? {}),
           },
         }));
+        for (const tu of toolUses) {
+          knownToolCallIds.add(tu.id);
+        }
       }
 
       out.push(assistant);
