@@ -2,20 +2,29 @@
 # Seeded into the persistent volume /data/models/aliases.yaml on first start.
 # After that, manage entries with `ccproxy add-model` / `ccproxy remove-model`
 # (edits the persistent copy live; survives redeploys).
-- alias: ak-claude-sonnet-4.6
-  name: claude-sonnet-4-6
-- alias: ak-claude-sonnet-4.5
-  name: claude-sonnet-4-5-20250929
-- alias: ak-claude-opus-4.7
-  name: claude-opus-4-7
-- alias: ak-claude-opus4-7
-  name: claude-opus-4-7
-- alias: ak-claude-opus-4.8
-  name: claude-opus-4-8
-- alias: ak-claude-opus4-8
-  name: claude-opus-4-8
+# Opus 5.5. Both plain spellings are kept: the effort variants use the dotted
+# form, so ak-claude-opus-5.5 is what clients reach for — ak-claude-opus-5-5 is
+# an alias of convenience, not a different model.
+# Needs CLIPROXY_IMAGE_TAG >= v7.3.17 (claude-cli/2.1.280); older images are
+# rejected upstream with claude_code_version_too_old.
+- alias: ak-claude-opus-5.5
+  name: claude-opus-5-5
+- alias: ak-claude-opus-5-5
+  name: claude-opus-5-5
+- alias: ak-claude-opus-5.5-low
+  name: claude-opus-5-5
+- alias: ak-claude-opus-5.5-medium
+  name: claude-opus-5-5
+- alias: ak-claude-opus-5.5-high
+  name: claude-opus-5-5
+- alias: ak-claude-sonnet-5
+  name: claude-sonnet-5
+- alias: ak-claude-fable-5-low
+  name: claude-fable-5
 # Effort variants share the same upstream model; effort is forced via
 # payload.override in config.yaml.template (do NOT put (low)/(high) in name).
+- alias: ak-claude-opus-4.8
+  name: claude-opus-4-8
 - alias: ak-claude-opus-4.8-low
   name: claude-opus-4-8
 - alias: ak-claude-opus-4.8-medium
@@ -26,12 +35,15 @@
   name: claude-opus-4-6
 - alias: ak-claude-haiku-4.5
   name: claude-haiku-4-5-20251001
+# Claude Code native id (keep ak-claude-haiku-4.5 as-is).
+- alias: claude-haiku-4.5
+  name: claude-haiku-4-5-20251001
 # OpenAI / Codex desktop helper IDs → low Claude (override live with
 # `ccproxy codex helper-model <alias>`). Needed so gpt-5.4-mini side-calls
 # don't 502 on Claude-only OAuth.
-- alias: gpt-5.4-mini
-  name: claude-haiku-4-5-20251001
 - alias: gpt-5.4
+  name: claude-haiku-4-5-20251001
+- alias: gpt-5.4-mini
   name: claude-haiku-4-5-20251001
 - alias: gpt-5.5-mini
   name: claude-haiku-4-5-20251001
