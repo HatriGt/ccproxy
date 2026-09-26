@@ -7,6 +7,7 @@ Reads tokens from the ccproxy cli-proxy-api container; never prints tokens.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import time
@@ -27,6 +28,15 @@ def sh(*args: str) -> str:
 
 
 def find_api() -> str:
+    # Pin to the compose project — several stacks can match the name scan.
+    project = os.environ.get("CCPROXY_PROJECT", "")
+    if project:
+        out = sh("docker", "ps", "--filter",
+                 f"label=com.docker.compose.project={project}",
+                 "--format", "{{.Names}}")
+        for name in out.splitlines():
+            if "cli-proxy-api" in name:
+                return name
     out = sh("docker", "ps", "--format", "{{.Names}}")
     for name in out.splitlines():
         if "ccproxy" in name and "cli-proxy-api" in name:

@@ -6,6 +6,9 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # shellcheck source=/dev/null
 source "${ROOT}/scripts/load-env.sh"
 
+# Disambiguates the api/shim container when several compose stacks exist.
+export CCPROXY_PROJECT="${COMPOSE_PROJECT_NAME:-}"
+
 TARGET="${ACCOUNTS_TARGET:-remote}"
 VPS_HOST="${VPS_SSH_HOST:-${CLIPROXY_VPS_SSH_HOST:-hostbrr}}"
 
@@ -14,7 +17,13 @@ VPS_HOST="${VPS_SSH_HOST:-${CLIPROXY_VPS_SSH_HOST:-hostbrr}}"
 _remote() {
   cat <<'REMOTE'
 set -euo pipefail
-api=$(docker ps --format '{{.Names}}' | grep -E 'ccproxy.*cli-proxy-api' | head -1)
+if [ -n "${CCPROXY_PROJECT:-}" ]; then
+  # Pin to the compose project — several stacks can match the name grep.
+  api=$(docker ps --filter "label=com.docker.compose.project=${CCPROXY_PROJECT}" \
+        --format '{{.Names}}' | grep -E 'cli-proxy-api' | head -1)
+else
+  api=$(docker ps --format '{{.Names}}' | grep -E 'ccproxy.*cli-proxy-api' | head -1)
+fi
 if [[ -z "$api" ]]; then
   echo "ERROR: cli-proxy-api container not found." >&2
   exit 1
@@ -121,7 +130,7 @@ echo "==> Claude accounts (${TARGET})"
 echo ""
 
 case "$TARGET" in
-  remote) ssh -o LogLevel=ERROR "$VPS_HOST" "bash -s" <<<"$(_remote)" | _render ;;
+  remote) ssh -o LogLevel=ERROR "$VPS_HOST" "CCPROXY_PROJECT='$CCPROXY_PROJECT' bash -s" <<<"$(_remote)" | _render ;;
   local)  bash -c "$(_remote)" | _render ;;
   *) echo "Unknown target: $TARGET" >&2; exit 2 ;;
 esac

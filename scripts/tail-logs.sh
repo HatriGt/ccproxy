@@ -6,14 +6,29 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # shellcheck source=/dev/null
 source "${ROOT}/scripts/load-env.sh"
 
+# Disambiguates the api/shim container when several compose stacks exist.
+export CCPROXY_PROJECT="${COMPOSE_PROJECT_NAME:-}"
+
 TARGET="${TAIL_LOGS_TARGET:-remote}"
 VPS_HOST="${VPS_SSH_HOST:-${CLIPROXY_VPS_SSH_HOST:-hostbrr}}"
 TAIL="${TAIL_LINES:-100}"
 
 _stream() {
   local api shim
-  api=$(docker ps --format '{{.Names}}' | grep -E 'ccproxy.*cli-proxy-api' | head -1)
-  shim=$(docker ps --format '{{.Names}}' | grep -E 'ccproxy.*cursor-shim' | head -1)
+  if [ -n "${CCPROXY_PROJECT:-}" ]; then
+    # Pin to the compose project — several stacks can match the name grep.
+    api=$(docker ps --filter "label=com.docker.compose.project=${CCPROXY_PROJECT}" \
+          --format '{{.Names}}' | grep -E 'cli-proxy-api' | head -1)
+  else
+    api=$(docker ps --format '{{.Names}}' | grep -E 'ccproxy.*cli-proxy-api' | head -1)
+  fi
+  if [ -n "${CCPROXY_PROJECT:-}" ]; then
+    # Pin to the compose project — several stacks can match the name grep.
+    shim=$(docker ps --filter "label=com.docker.compose.project=${CCPROXY_PROJECT}" \
+          --format '{{.Names}}' | grep -E 'cursor-shim' | head -1)
+  else
+    shim=$(docker ps --format '{{.Names}}' | grep -E 'ccproxy.*cursor-shim' | head -1)
+  fi
   if [[ -z "$api" && -z "$shim" ]]; then
     echo "ERROR: no ccproxy api/shim containers running." >&2
     exit 1
@@ -30,10 +45,22 @@ _stream() {
 
 case "$TARGET" in
   remote)
-    ssh -tt -o LogLevel=ERROR "$VPS_HOST" "TAIL_LINES=$TAIL bash -s" <<'REMOTE'
+    ssh -tt -o LogLevel=ERROR "$VPS_HOST" "TAIL_LINES=$TAIL CCPROXY_PROJECT='$CCPROXY_PROJECT' bash -s" <<'REMOTE'
 set -euo pipefail
-api=$(docker ps --format '{{.Names}}' | grep -E 'ccproxy.*cli-proxy-api' | head -1)
-shim=$(docker ps --format '{{.Names}}' | grep -E 'ccproxy.*cursor-shim' | head -1)
+if [ -n "${CCPROXY_PROJECT:-}" ]; then
+  # Pin to the compose project — several stacks can match the name grep.
+  api=$(docker ps --filter "label=com.docker.compose.project=${CCPROXY_PROJECT}" \
+        --format '{{.Names}}' | grep -E 'cli-proxy-api' | head -1)
+else
+  api=$(docker ps --format '{{.Names}}' | grep -E 'ccproxy.*cli-proxy-api' | head -1)
+fi
+if [ -n "${CCPROXY_PROJECT:-}" ]; then
+  # Pin to the compose project — several stacks can match the name grep.
+  shim=$(docker ps --filter "label=com.docker.compose.project=${CCPROXY_PROJECT}" \
+        --format '{{.Names}}' | grep -E 'cursor-shim' | head -1)
+else
+  shim=$(docker ps --format '{{.Names}}' | grep -E 'ccproxy.*cursor-shim' | head -1)
+fi
 if [[ -z "$api" && -z "$shim" ]]; then
   echo "ERROR: no ccproxy api/shim containers running." >&2
   exit 1

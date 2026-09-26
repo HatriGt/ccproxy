@@ -13,6 +13,9 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # shellcheck source=/dev/null
 source "${ROOT}/scripts/load-env.sh"
 
+# Disambiguates the api/shim container when several compose stacks exist.
+export CCPROXY_PROJECT="${COMPOSE_PROJECT_NAME:-}"
+
 VPS_HOST="${VPS_SSH_HOST:-${CLIPROXY_VPS_SSH_HOST:-hostbrr}}"
 BASE_URL="${CURSOR_BASE_URL:-https://${PUBLIC_HOSTNAME:-cliproxy.yourdomain.com}/v1}"
 BASE_URL="${BASE_URL%/}"
@@ -72,13 +75,20 @@ _helper_remote() {
 
   ssh -o LogLevel=ERROR "$VPS_HOST" \
     IDS_B64="$ids_b64" TARGET_B64="$target_b64" DEFAULT_B64="$default_b64" \
+    CCPROXY_PROJECT="$CCPROXY_PROJECT" \
     'bash -s' <<'REMOTE'
 set -euo pipefail
 IDS=$(printf '%s' "$IDS_B64" | base64 -d)
 TARGET=$(printf '%s' "${TARGET_B64:-}" | base64 -d)
 DEFAULT_ALIAS=$(printf '%s' "$DEFAULT_B64" | base64 -d)
 
-api=$(docker ps --format '{{.Names}}' | grep -E 'ccproxy.*cli-proxy-api' | head -1)
+if [ -n "${CCPROXY_PROJECT:-}" ]; then
+  # Pin to the compose project — several stacks can match the name grep.
+  api=$(docker ps --filter "label=com.docker.compose.project=${CCPROXY_PROJECT}" \
+        --format '{{.Names}}' | grep -E 'cli-proxy-api' | head -1)
+else
+  api=$(docker ps --format '{{.Names}}' | grep -E 'ccproxy.*cli-proxy-api' | head -1)
+fi
 if [ -z "$api" ]; then echo "ERROR: api container not found." >&2; exit 1; fi
 vol=$(docker inspect "$api" --format '{{range .Mounts}}{{if eq .Destination "/data/models"}}{{.Name}}{{end}}{{end}}')
 if [ -z "$vol" ]; then echo "ERROR: cliproxy-models volume not found." >&2; exit 1; fi

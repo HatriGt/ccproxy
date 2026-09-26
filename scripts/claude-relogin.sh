@@ -8,6 +8,12 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # shellcheck source=/dev/null
 source "${ROOT}/scripts/load-env.sh"
 
+# Disambiguates the api/shim container when several compose stacks exist.
+export CCPROXY_PROJECT="${COMPOSE_PROJECT_NAME:-}"
+
+# Disambiguates the api/shim container when several compose stacks exist.
+export CCPROXY_PROJECT="${COMPOSE_PROJECT_NAME:-}"
+
 VPS_HOST="${VPS_SSH_HOST:-${CLIPROXY_VPS_SSH_HOST:-hostbrr}}"
 BASE_URL="${CURSOR_BASE_URL:-https://${PUBLIC_HOSTNAME}/v1}"
 LABEL="${1:-login}"
@@ -30,7 +36,8 @@ echo ""
 
 # Do NOT use a heredoc for the interactive step — it steals stdin and breaks TTY.
 ssh -t "$VPS_HOST" \
-  'api=$(docker ps --format "{{.Names}}" | grep -E "ccproxy.*cli-proxy-api" | head -1)
+  'api=$(docker ps --filter "label=com.docker.compose.project='"$CCPROXY_PROJECT"'" --format "{{.Names}}" | grep -E "cli-proxy-api" | head -1)
+   [ -n "$api" ] || api=$(docker ps --format "{{.Names}}" | grep -E "ccproxy.*cli-proxy-api" | head -1)
    if [ -z "$api" ]; then echo "ERROR: cli-proxy-api container not found." >&2; exit 1; fi
    echo "Container: $api"
    echo ""
@@ -39,8 +46,10 @@ ssh -t "$VPS_HOST" \
 echo ""
 echo "Restarting api + shim..."
 ssh "$VPS_HOST" \
-  'api=$(docker ps --format "{{.Names}}" | grep -E "ccproxy.*cli-proxy-api" | head -1)
-   shim=$(docker ps --format "{{.Names}}" | grep -E "ccproxy.*cursor-shim" | head -1 || true)
+  'api=$(docker ps --filter "label=com.docker.compose.project='"$CCPROXY_PROJECT"'" --format "{{.Names}}" | grep -E "cli-proxy-api" | head -1)
+   [ -n "$api" ] || api=$(docker ps --format "{{.Names}}" | grep -E "ccproxy.*cli-proxy-api" | head -1)
+   shim=$(docker ps --filter "label=com.docker.compose.project='"$CCPROXY_PROJECT"'" --format "{{.Names}}" | grep -E "cursor-shim" | head -1 || true)
+   [ -n "$shim" ] || shim=$(docker ps --format "{{.Names}}" | grep -E "ccproxy.*cursor-shim" | head -1 || true)
    [ -n "$api" ] && docker restart "$api" >/dev/null && echo "  restarted $api"
    [ -n "$shim" ] && docker restart "$shim" >/dev/null && echo "  restarted $shim"'
 

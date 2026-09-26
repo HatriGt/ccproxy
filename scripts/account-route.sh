@@ -10,6 +10,9 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # shellcheck source=/dev/null
 source "${ROOT}/scripts/load-env.sh"
 
+# Disambiguates the api container when several compose stacks exist.
+export CCPROXY_PROJECT="${COMPOSE_PROJECT_NAME:-}"
+
 TARGET="${ROUTE_TARGET:-remote}"
 VPS_HOST="${VPS_SSH_HOST:-${CLIPROXY_VPS_SSH_HOST:-hostbrr}}"
 SCRIPT="${ROOT}/scripts/account_route.py"
@@ -22,7 +25,7 @@ fi
 
 case "$TARGET" in
   remote)
-    ssh -o LogLevel=ERROR "$VPS_HOST" python3 - "$@" <"$SCRIPT"
+    ssh -o LogLevel=ERROR "$VPS_HOST" "CCPROXY_PROJECT='$CCPROXY_PROJECT' python3 -" "$@" <"$SCRIPT"
     ;;
   local)
     python3 "$SCRIPT" "$@"
