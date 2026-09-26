@@ -13,6 +13,7 @@ Usage:
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import urllib.error
@@ -24,6 +25,15 @@ def sh(*args: str) -> str:
 
 
 def find_container(needle: str) -> str:
+    # Pin to the compose project — several stacks can match the name scan.
+    project = os.environ.get("CCPROXY_PROJECT", "")
+    if project:
+        out = sh("docker", "ps", "--filter",
+                 f"label=com.docker.compose.project={project}",
+                 "--format", "{{.Names}}")
+        for name in out.splitlines():
+            if needle in name:
+                return name
     out = sh("docker", "ps", "--format", "{{.Names}}")
     for name in out.splitlines():
         if needle in name:

@@ -7,6 +7,9 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # shellcheck source=/dev/null
 source "${ROOT}/scripts/load-env.sh"
 
+# Disambiguates the usage-tracker container when several compose stacks exist.
+export CCPROXY_PROJECT="${COMPOSE_PROJECT_NAME:-}"
+
 TARGET="${USAGE_STATS_TARGET:-remote}"
 VPS_HOST="${VPS_SSH_HOST:-${CLIPROXY_VPS_SSH_HOST:-hostbrr}}"
 
@@ -23,7 +26,13 @@ if [[ "$has_range" == false && ${#ARGS[@]} -eq 0 ]]; then
 fi
 
 _find_tracker() {
-  docker ps --format '{{.Names}}' | grep -E 'ccproxy.*usage-tracker' | head -1
+  # Pin to the compose project — several stacks can match the name grep.
+  if [[ -n "${CCPROXY_PROJECT:-}" ]]; then
+    docker ps --filter "label=com.docker.compose.project=${CCPROXY_PROJECT}" \
+      --format '{{.Names}}' | grep -E 'usage-tracker' | head -1
+  else
+    docker ps --format '{{.Names}}' | grep -E 'ccproxy.*usage-tracker' | head -1
+  fi
 }
 
 _run_local() {
@@ -43,7 +52,8 @@ _run_local() {
 _run_remote() {
   local quoted=""
   for a in "${ARGS[@]}"; do quoted+=" $(printf '%q' "$a")"; done
-  ssh "$VPS_HOST" "tracker=\$(docker ps --format '{{.Names}}' | grep -E 'ccproxy.*usage-tracker' | head -1); \
+  ssh "$VPS_HOST" "tracker=\$(docker ps --filter 'label=com.docker.compose.project=$CCPROXY_PROJECT' --format '{{.Names}}' | grep -E 'usage-tracker' | head -1); \
+    if [ -z \"\$tracker\" ]; then tracker=\$(docker ps --format '{{.Names}}' | grep -E 'ccproxy.*usage-tracker' | head -1); fi; \
     if [ -z \"\$tracker\" ]; then echo 'ERROR: usage-tracker container not found on VPS.' >&2; exit 1; fi; \
     docker exec \"\$tracker\" usage-cli${quoted}"
 }

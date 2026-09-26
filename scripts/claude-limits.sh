@@ -7,6 +7,9 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # shellcheck source=/dev/null
 source "${ROOT}/scripts/load-env.sh"
 
+# Disambiguates the api container when several compose stacks exist.
+export CCPROXY_PROJECT="${COMPOSE_PROJECT_NAME:-}"
+
 TARGET="${LIMITS_TARGET:-remote}"
 VPS_HOST="${VPS_SSH_HOST:-${CLIPROXY_VPS_SSH_HOST:-hostbrr}}"
 FETCH="${ROOT}/scripts/claude_limits_fetch.py"
@@ -16,7 +19,7 @@ echo ""
 
 case "$TARGET" in
   remote)
-    ssh -o LogLevel=ERROR "$VPS_HOST" python3 - <"$FETCH"
+    ssh -o LogLevel=ERROR "$VPS_HOST" "CCPROXY_PROJECT='$CCPROXY_PROJECT' python3 -" <"$FETCH"
     ;;
   local)
     python3 "$FETCH"

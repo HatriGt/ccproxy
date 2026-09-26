@@ -15,6 +15,9 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # shellcheck source=/dev/null
 source "${ROOT}/scripts/load-env.sh"
 
+# Disambiguates the api/shim container when several compose stacks exist.
+export CCPROXY_PROJECT="${COMPOSE_PROJECT_NAME:-}"
+
 TARGET="${LIVE_LOGS_TARGET:-remote}"
 VPS_HOST="${VPS_SSH_HOST:-${CLIPROXY_VPS_SSH_HOST:-hostbrr}}"
 MGMT_KEY="${CLIPROXY_MGMT_KEY:-}"
@@ -48,7 +51,13 @@ MODE="$1"
 KEEP="$2"
 MGMT_KEY="$3"
 
-api=$(docker ps --format '{{.Names}}' | grep -E 'ccproxy.*cli-proxy-api' | head -1)
+if [ -n "${CCPROXY_PROJECT:-}" ]; then
+  # Pin to the compose project — several stacks can match the name grep.
+  api=$(docker ps --filter "label=com.docker.compose.project=${CCPROXY_PROJECT}" \
+        --format '{{.Names}}' | grep -E 'cli-proxy-api' | head -1)
+else
+  api=$(docker ps --format '{{.Names}}' | grep -E 'ccproxy.*cli-proxy-api' | head -1)
+fi
 if [[ -z "$api" ]]; then
   echo "ERROR: cli-proxy-api container not found." >&2
   exit 1
@@ -187,7 +196,7 @@ _run_remote() {
     -o ServerAliveInterval=5 \
     -o ServerAliveCountMax=2 \
     "$VPS_HOST" \
-    "trap 'rm -f \"$remote_tmp\"' EXIT; exec bash '$remote_tmp' '$MODE' '$KEEP' '$MGMT_KEY'"
+    "trap 'rm -f \"$remote_tmp\"' EXIT; export CCPROXY_PROJECT='$CCPROXY_PROJECT'; exec bash '$remote_tmp' '$MODE' '$KEEP' '$MGMT_KEY'"
 }
 
 _run_local() {
