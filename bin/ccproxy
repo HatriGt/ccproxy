@@ -59,6 +59,8 @@ Commands:
                   Effort: suffix -low/-medium/-high auto-sets thinking effort
                   (e.g. add-model ak-claude-opus-4.9-low claude-opus-4-9)
   remove-model    Remove a model alias: remove-model <alias>
+  normalize-auth  Collapse duplicate auth records, restore canonical names
+                  (--dry-run to preview)
   codex           Codex: codex helper-model|helpers|config
   stats           Token usage + Claude plan limits per account
   live            Live request logs with prompts (temporarily enables request-log)
@@ -166,6 +168,9 @@ case "$cmd" in
     ;;
   remove-model)
     exec "${SCRIPTS}/models.sh" remove "$@"
+    ;;
+  normalize-auth|normalise-auth)
+    exec "${SCRIPTS}/normalize-auth.sh" "$@"
     ;;
   codex|cdx)
     exec "${SCRIPTS}/codex.sh" "$@"
