@@ -2,20 +2,29 @@
 # Seeded into the persistent volume /data/models/aliases.yaml on first start.
 # After that, manage entries with `ccproxy add-model` / `ccproxy remove-model`
 # (edits the persistent copy live; survives redeploys).
-# Opus 5.5. Both plain spellings are kept: the effort variants use the dotted
-# form, so ak-claude-opus-5.5 is what clients reach for — ak-claude-opus-5-5 is
-# an alias of convenience, not a different model.
+# Opus 5.5, carried in both spellings — dotted (5.5) and dashed (5-5) — with
+# every effort variant present in each. Keep them symmetric: a half-populated
+# set means whichever convention a client reaches for, some member is missing
+# and returns a bare "model not available" that looks like an outage.
+# The -low/-medium/-high suffixes match the ak-claude-*-<effort> wildcards in
+# config.yaml.template, so both spellings pick up effort identically.
 # Needs CLIPROXY_UPSTREAM_TAG >= v7.3.17 (claude-cli/2.1.280); older images are
 # rejected upstream with claude_code_version_too_old.
 - alias: ak-claude-opus-5.5
-  name: claude-opus-5-5
-- alias: ak-claude-opus-5-5
   name: claude-opus-5-5
 - alias: ak-claude-opus-5.5-low
   name: claude-opus-5-5
 - alias: ak-claude-opus-5.5-medium
   name: claude-opus-5-5
 - alias: ak-claude-opus-5.5-high
+  name: claude-opus-5-5
+- alias: ak-claude-opus-5-5
+  name: claude-opus-5-5
+- alias: ak-claude-opus-5-5-low
+  name: claude-opus-5-5
+- alias: ak-claude-opus-5-5-medium
+  name: claude-opus-5-5
+- alias: ak-claude-opus-5-5-high
   name: claude-opus-5-5
 - alias: ak-claude-sonnet-5
   name: claude-sonnet-5
