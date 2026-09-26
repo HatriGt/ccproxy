@@ -10,7 +10,11 @@ services:
       context: .
       dockerfile: images/cli-proxy-api/Dockerfile
       args:
-        CLIPROXY_UPSTREAM_TAG: ${CLIPROXY_IMAGE_TAG:-v7.2.71}
+        # Pinned, deliberately NOT ${CLIPROXY_IMAGE_TAG}: Dokploy rewrites .env from
+        # its own stored config on every git-triggered deploy, which reverted this
+        # to v7.2.71 and broke Opus 5.5. v7.3.17 ships claude-cli/2.1.280, the
+        # minimum Anthropic accepts for claude-opus-5-5.
+        CLIPROXY_UPSTREAM_TAG: v7.3.17
     image: ${CLIPROXY_API_IMAGE:-ccproxy-cli-proxy-api:local}
     restart: unless-stopped
     env_file:
