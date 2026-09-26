@@ -79,8 +79,25 @@ echo $?
 
 ### Upgrade CLIProxyAPI version
 
-1. Set `CLIPROXY_IMAGE_TAG` in `.env` (e.g. `v7.2.71`)
-2. `./scripts/deploy-to-vps.sh`
+The tag is pinned in the repo, not read from `.env` — Dokploy rewrites `.env`
+from its own stored config on every git-triggered deploy, so an env override
+would be reverted on the next push to `main`.
+
+1. Bump `CLIPROXY_UPSTREAM_TAG` in `docker-compose.yml`
+2. Bump the matching `ARG CLIPROXY_UPSTREAM_TAG` default in
+   `images/cli-proxy-api/Dockerfile` so a bare `docker build` agrees
+3. `./scripts/deploy-to-vps.sh`, or merge to `main` and let Dokploy deploy
+
+Newer Claude models are gated on the Claude Code version the upstream binary
+reports. Check it before upgrading past a model you depend on:
+
+```bash
+docker exec <api-container> sh -c \
+  'grep -ao "claude-cli/[0-9.]*" /CLIProxyAPI/CLIProxyAPI | sort -u'
+```
+
+`claude-opus-5-5` requires `claude-cli/2.1.280` (ships in `v7.3.17`); older
+images are rejected upstream with `claude_code_version_too_old`.
 
 ## Backup OAuth tokens
 
