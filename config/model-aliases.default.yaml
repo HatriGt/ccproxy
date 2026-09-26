@@ -5,7 +5,7 @@
 # Opus 5.5. Both plain spellings are kept: the effort variants use the dotted
 # form, so ak-claude-opus-5.5 is what clients reach for — ak-claude-opus-5-5 is
 # an alias of convenience, not a different model.
-# Needs CLIPROXY_IMAGE_TAG >= v7.3.17 (claude-cli/2.1.280); older images are
+# Needs CLIPROXY_UPSTREAM_TAG >= v7.3.17 (claude-cli/2.1.280); older images are
 # rejected upstream with claude_code_version_too_old.
 - alias: ak-claude-opus-5.5
   name: claude-opus-5-5

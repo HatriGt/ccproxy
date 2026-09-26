@@ -9,7 +9,7 @@ Scripts auto-load via `scripts/load-env.sh`.
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `COMPOSE_PROJECT_NAME` | `ccproxy` | Docker Compose project name |
-| `CLIPROXY_IMAGE_TAG` | `v7.2.71` | Upstream `eceasy/cli-proxy-api` tag |
+| ~~`CLIPROXY_IMAGE_TAG`~~ | _retired_ | No longer read. The upstream tag is pinned as `CLIPROXY_UPSTREAM_TAG` in `docker-compose.yml`; setting this has no effect. |
 | `CLIPROXY_API_IMAGE` | `ccproxy-cli-proxy-api:local` | Built API image name |
 | `CURSOR_SHIM_IMAGE` | `ccproxy-cursor-shim:local` | Built shim image name |
 
