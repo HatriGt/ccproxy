@@ -123,6 +123,15 @@ def human_mins(mins: float | None) -> str:
     return f"{mins / 60:.1f}h left"
 
 
+def token_group(mins: float | None) -> int:
+    # Valid tokens first, unknown middle, expired last.
+    if mins is None:
+        return 1
+    if mins < 0:
+        return 2
+    return 0
+
+
 def pct(v) -> str:
     if v is None:
         return "-"
@@ -210,7 +219,7 @@ def main() -> int:
     paused: list[str] = []
     auth_fail: list[str] = []
 
-    for r in sorted(rows, key=lambda x: x["email"]):
+    for r in sorted(rows, key=lambda x: (token_group(x["mins"]), (x["email"] or "").lower())):
         email = r["email"]
         if r["status"] == "PAUSED":
             paused.append(email)

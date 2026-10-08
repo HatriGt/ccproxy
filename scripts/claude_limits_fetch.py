@@ -52,10 +52,32 @@ def auth_files(api: str) -> list[str]:
     return [p for p in out.split() if p]
 
 
-def load_auth(api: str, path: str) -> tuple[str, str]:
+def token_mins(exp) -> float | None:
+    if not exp:
+        return None
+    try:
+        e = datetime.fromisoformat(str(exp).replace("Z", "+00:00"))
+        if e.tzinfo is None:
+            e = e.replace(tzinfo=timezone.utc)
+        return (e - datetime.now(timezone.utc)).total_seconds() / 60
+    except Exception:
+        return None
+
+
+def token_group(mins: float | None) -> int:
+    # Valid tokens first, unknown middle, expired last.
+    if mins is None:
+        return 1
+    if mins < 0:
+        return 2
+    return 0
+
+
+def load_auth(api: str, path: str) -> tuple[str, str, float | None]:
     raw = sh("docker", "exec", api, "cat", path)
     data = json.loads(raw)
-    return data.get("email") or "?", data.get("access_token") or ""
+    mins = token_mins(data.get("expired") or data.get("expires_at"))
+    return data.get("email") or "?", data.get("access_token") or "", mins
 
 
 def fetch_usage(token: str) -> tuple[int, dict]:
@@ -136,21 +158,23 @@ def main() -> int:
         print("No Claude auth files found in /data/auth.")
         return 0
 
-    rows: list[tuple[str, int, dict]] = []
+    rows: list[tuple[str, float | None, int, dict]] = []
     for path in files:
-        email, token = load_auth(api, path)
+        email, token, mins = load_auth(api, path)
         if not token:
-            rows.append((email, 0, {"error": {"message": "missing access_token"}}))
+            rows.append((email, mins, 0, {"error": {"message": "missing access_token"}}))
             continue
         code, body = fetch_usage(token)
-        rows.append((email, code, body))
+        rows.append((email, mins, code, body))
         time.sleep(0.35)
 
     print(f"{'ACCOUNT':<34} {'5-HOUR':<8} {'RESET':<22} {'WEEKLY':<8} {'RESET / NOTE'}")
     print("-" * 100)
     warn: list[str] = []
 
-    for email, code, body in sorted(rows, key=lambda r: r[0]):
+    for email, mins, code, body in sorted(
+        rows, key=lambda r: (token_group(r[1]), (r[0] or "").lower())
+    ):
         if code != 200:
             err = (body.get("error") or {}).get("message") or f"HTTP {code}"
             print(f"{email:<34} ERR      {err[:50]}")
@@ -174,7 +198,7 @@ def main() -> int:
             p = lim.get("percent")
             if p is None:
                 continue
-            note = f"weekly · {scope}"
+            note = f"weekly - {scope}"
             if lim.get("resets_at"):
                 note += f" ({reset_human(lim.get('resets_at'))})"
             p_col = f"{pct(p)}{mark(p)}"

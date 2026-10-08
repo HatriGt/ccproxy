@@ -99,11 +99,19 @@ def human_mins(mins):
         return f"{mins:.0f}m left"
     return f"{mins/60:.1f}h left"
 
+def token_group(mins):
+    # Valid tokens first, unknown middle, expired last; email tie-break.
+    if mins is None:
+        return 1
+    if mins < 0:
+        return 2
+    return 0
+
 print(f"{'ACCOUNT':<34} {'STATUS':<11} {'TOKEN':<18} {'ACTION'}")
 print("-" * 82)
 need = []
 paused = []
-for email, disabled, mins, last in sorted(rows):
+for email, disabled, mins, last in sorted(rows, key=lambda r: (token_group(r[2]), (r[0] or "").lower())):
     st, action = status(disabled, mins)
     if action == "needs re-login":
         need.append(email)
