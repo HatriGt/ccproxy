@@ -19,6 +19,7 @@ alias ccd='ccproxy deploy'      # redeploy VPS
 alias ccu='ccproxy url'         # print Cursor base URL
 alias cce='ccproxy env'         # show settings
 alias cca='ccproxy accounts'    # Claude account status
+alias cco='ccproxy overview'    # accounts + plan limits (one table)
 alias ccst='ccproxy stats'      # token usage + Claude plan limits
 alias ccl='ccproxy live'        # live request logs + prompts
 alias ccpause='ccproxy pause'   # exclude account from round-robin
@@ -39,6 +40,7 @@ if [[ -n "${ZSH_VERSION:-}" ]] && command -v compdef >/dev/null 2>&1; then
       'url:Print Cursor base URL'
       'env:Show key settings'
       'accounts:Claude account status'
+      'overview:Accounts + plan limits (one table)'
       'pause:Exclude account from round-robin'
       'resume:Put account back in round-robin'
       'limits:Claude plan limits per account'

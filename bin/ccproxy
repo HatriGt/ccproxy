@@ -51,6 +51,7 @@ Commands:
   url             Print Cursor base URL (copy/paste)
   env             Show key settings
   accounts, acc   Claude account status (active/paused/expired)
+  overview, ov    Accounts + plan limits in one table (no day-wise tokens)
   pause           Exclude account from round-robin: pause <email-or-substring>
   resume          Put account back in round-robin: resume <email-or-substring>
   limits          Claude plan limits (5-hour + weekly) per account
@@ -138,6 +139,9 @@ case "$cmd" in
     ;;
   accounts|acc)
     exec "${SCRIPTS}/accounts-status.sh" "$@"
+    ;;
+  overview|ov|o|summary)
+    exec "${SCRIPTS}/accounts-overview.sh" "$@"
     ;;
   pause|disable)
     if [[ $# -lt 1 ]]; then
