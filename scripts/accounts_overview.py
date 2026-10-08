@@ -264,7 +264,7 @@ def main() -> int:
         )
 
     header = (
-        f"{'ACCOUNT':<34} {'STATUS':<9} {'TOKEN':<16} "
+        f"{'ACCOUNT':<34} {'STATUS':<9} {'GUARD':<6} {'TOKEN':<16} "
         f"{'5-HOUR':<8} {'5H RESET':<22} {'WEEKLY':<8} {'WEEK RESET / NOTE'}"
     )
     print(header)
@@ -278,6 +278,7 @@ def main() -> int:
 
     for r in sorted(rows, key=lambda x: (token_group(x["mins"]), (x["email"] or "").lower())):
         email = r["email"]
+        guard_col = "ON" if r.get("guard_on") else "OFF"
         if r.get("auto_held"):
             held.append(email)
         elif r["status"] == "PAUSED":
@@ -291,7 +292,7 @@ def main() -> int:
         if code != 200:
             err = (body.get("error") or {}).get("message") or f"HTTP {code}"
             print(
-                f"{email:<34} {r['status']:<9} {human_mins(r['mins']):<16} "
+                f"{email:<34} {r['status']:<9} {guard_col:<6} {human_mins(r['mins']):<16} "
                 f"{'ERR':<8} {err[:60]}"
             )
             if code in (401, 403) or "expired" in err.lower() or "re-authenticate" in err.lower():
@@ -303,7 +304,7 @@ def main() -> int:
         f_col = f"{pct(five.get('utilization'))}{mark(five.get('utilization'))}"
         w_col = f"{pct(week.get('utilization'))}{mark(week.get('utilization'))}"
         print(
-            f"{email:<34} {r['status']:<9} {human_mins(r['mins']):<16} "
+            f"{email:<34} {r['status']:<9} {guard_col:<6} {human_mins(r['mins']):<16} "
             f"{f_col:<8} {reset_human(five.get('resets_at')):<22} "
             f"{w_col:<8} {reset_human(week.get('resets_at'))}"
         )
@@ -320,7 +321,7 @@ def main() -> int:
                 note += f" ({reset_human(lim.get('resets_at'))})"
             p_col = f"{pct(p)}{mark(p)}"
             print(
-                f"{'':<34} {'':<9} {'':<16} "
+                f"{'':<34} {'':<9} {'':<6} {'':<16} "
                 f"{'':<8} {'':<22} {p_col:<8} {note}"
             )
 
