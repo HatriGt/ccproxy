@@ -1,0 +1,6 @@
+# Keep Actions/shell scripts LF so GitHub Actions can parse workflows on Windows commits.
+*.yml text eol=lf
+*.yaml text eol=lf
+*.sh text eol=lf
+*.py text eol=lf
+bin/ccproxy text eol=lf
