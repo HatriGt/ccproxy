@@ -24,6 +24,7 @@ alias ccst='ccproxy stats'      # token usage + Claude plan limits
 alias ccl='ccproxy live'        # live request logs + prompts
 alias ccpause='ccproxy pause'   # exclude account from round-robin
 alias ccresume='ccproxy resume' # put account back in round-robin
+alias ccguard='ccproxy guard'   # 5h auto-hold opt-in
 alias cccodex='ccproxy codex'   # Codex helpers (helper model / config)
 
 # Optional: tab-complete subcommands
@@ -41,6 +42,7 @@ if [[ -n "${ZSH_VERSION:-}" ]] && command -v compdef >/dev/null 2>&1; then
       'env:Show key settings'
       'accounts:Claude account status'
       'overview:Accounts + plan limits (one table)'
+      'guard:5h auto-hold opt-in (list|on|off)'
       'pause:Exclude account from round-robin'
       'resume:Put account back in round-robin'
       'limits:Claude plan limits per account'

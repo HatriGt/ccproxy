@@ -177,9 +177,15 @@ def main() -> None:
     name = target.get("name") or ""
     was = bool(target.get("disabled"))
 
+    # Manual pause/resume always clears auto-HOLD ownership so the 5h guard
+    # does not fight the high-level gate.
+    _clear_auto_held(tracker, email)
+
     if was == want_disabled:
         state = "paused (excluded from round-robin)" if was else "active (in round-robin)"
         print(f"No change: {email} is already {state}")
+        if want_disabled:
+            print("(Any prior 5h auto-HOLD is now a manual pause.)")
         return
 
     result = set_disabled(tracker, key, name, want_disabled)
@@ -192,6 +198,41 @@ def main() -> None:
     else:
         print(f"Resumed {email}")
         print("Back in round-robin.")
+
+
+def _clear_auto_held(tracker: str, email: str) -> None:
+    script = r'''
+import json, sqlite3, sys, os
+from datetime import datetime, timezone
+cfg = json.loads(sys.stdin.read())
+db = os.environ.get("USAGE_DB_PATH", "/data/usage/usage.db")
+conn = sqlite3.connect(db)
+conn.executescript("""
+CREATE TABLE IF NOT EXISTS account_guard (
+    email TEXT PRIMARY KEY,
+    enabled INTEGER NOT NULL DEFAULT 0,
+    auto_held INTEGER NOT NULL DEFAULT 0,
+    held_at TEXT,
+    last_util REAL,
+    last_check TEXT,
+    updated_at TEXT
+);
+""")
+now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+conn.execute(
+    "UPDATE account_guard SET auto_held=0, held_at=NULL, updated_at=? WHERE email=?",
+    (now, cfg["email"].lower()),
+)
+conn.commit()
+print("{}")
+'''
+    subprocess.run(
+        ["docker", "exec", "-i", tracker, "python3", "-c", script],
+        input=json.dumps({"email": email}),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
 
 
 if __name__ == "__main__":

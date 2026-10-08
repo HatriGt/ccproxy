@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 """Drain CLIProxyAPI's usage-queue and persist per-request token usage to SQLite.
 
-The upstream /v0/management/usage-queue endpoint POPs records (they're gone once
-read), so this sidecar continuously drains them into a durable store that the
-`usage-cli` reads for day-wise, per-user reporting.
+Also runs the optional 5-hour plan-limit auto-hold loop (see guard.py) for
+accounts opted in via `ccproxy guard on`.
 """
 import json
 import os
@@ -13,11 +12,14 @@ import time
 import urllib.error
 import urllib.request
 
+import guard
+
 UPSTREAM = os.environ.get("CLIPROXY_UPSTREAM", "http://cli-proxy-api:8318").rstrip("/")
 MGMT_KEY = os.environ.get("CLIPROXY_MGMT_KEY", "")
 DB_PATH = os.environ.get("USAGE_DB_PATH", "/data/usage/usage.db")
 POLL_SECS = int(os.environ.get("USAGE_POLL_SECS", "15"))
 BATCH = int(os.environ.get("USAGE_BATCH", "200"))
+GUARD_POLL_SECS = int(os.environ.get("GUARD_POLL_SECS", "60"))
 
 QUEUE_URL = f"{UPSTREAM}/v0/management/usage-queue?count={BATCH}"
 
@@ -50,6 +52,7 @@ def init_db(conn):
     conn.execute("CREATE INDEX IF NOT EXISTS idx_usage_day ON usage(day)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_usage_src ON usage(source)")
     conn.commit()
+    guard.init_guard_db(conn)
 
 
 def fetch_batch():
@@ -59,7 +62,6 @@ def fetch_batch():
 
 
 def store(conn, records):
-    n = 0
     for r in records:
         tokens = r.get("tokens") or {}
         ts = r.get("timestamp") or ""
@@ -85,7 +87,6 @@ def store(conn, records):
                 int(r.get("latency_ms", 0)),
             ),
         )
-        n += conn.total_changes and 1 or 0
     conn.commit()
     return len(records)
 
@@ -97,7 +98,13 @@ def main():
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
     init_db(conn)
-    log(f"started: upstream={UPSTREAM} db={DB_PATH} poll={POLL_SECS}s batch={BATCH}")
+    do_guard = guard.guard_enabled()
+    log(
+        f"started: upstream={UPSTREAM} db={DB_PATH} poll={POLL_SECS}s batch={BATCH} "
+        f"guard={'on' if do_guard else 'off'} guard_poll={GUARD_POLL_SECS}s "
+        f"threshold={guard.THRESHOLD:.0f}%"
+    )
+    next_guard = 0.0
     while True:
         try:
             drained = 0
@@ -116,6 +123,15 @@ def main():
             log(f"upstream not ready ({e}); retrying")
         except Exception as e:  # keep the sidecar alive
             log(f"error: {e}")
+
+        now = time.time()
+        if do_guard and now >= next_guard:
+            try:
+                guard.tick(conn)
+            except Exception as e:
+                log(f"guard tick error: {e}")
+            next_guard = now + GUARD_POLL_SECS
+
         time.sleep(POLL_SECS)
 
 

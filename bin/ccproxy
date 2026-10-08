@@ -50,9 +50,10 @@ Commands:
   build, b        Build Docker images locally
   url             Print Cursor base URL (copy/paste)
   env             Show key settings
-  accounts, acc   Claude account status (active/paused/expired)
+  accounts, acc   Claude account status (active/paused/hold/expired)
   overview, ov    Accounts + plan limits in one table (no day-wise tokens)
-  pause           Exclude account from round-robin: pause <email-or-substring>
+  guard           5h auto-hold opt-in: guard list|on|off <email>
+  pause           Manual exclude from round-robin: pause <email-or-substring>
   resume          Put account back in round-robin: resume <email-or-substring>
   limits          Claude plan limits (5-hour + weekly) per account
   models          List Claude model aliases
@@ -142,6 +143,9 @@ case "$cmd" in
     ;;
   overview|ov|o|summary)
     exec "${SCRIPTS}/accounts-overview.sh" "$@"
+    ;;
+  guard|g)
+    exec "${SCRIPTS}/account-guard.sh" "$@"
     ;;
   pause|disable)
     if [[ $# -lt 1 ]]; then

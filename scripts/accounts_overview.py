@@ -100,7 +100,9 @@ def token_mins(exp) -> float | None:
         return None
 
 
-def account_status(disabled: bool, mins: float | None) -> tuple[str, str]:
+def account_status(disabled: bool, mins: float | None, auto_held: bool = False) -> tuple[str, str]:
+    if auto_held:
+        return "HOLD", "5h limit auto-hold (guard)"
     if disabled:
         return "PAUSED", "excluded from round-robin"
     if mins is None:
@@ -111,6 +113,52 @@ def account_status(disabled: bool, mins: float | None) -> tuple[str, str]:
         return "EXPIRING", "refresh soon"
     return "ACTIVE", "in round-robin"
 
+
+def load_guards() -> dict[str, dict]:
+    """Read opt-in / auto-HOLD flags from usage-tracker SQLite (same host)."""
+    import sqlite3
+
+    project = os.environ.get("CCPROXY_PROJECT", "")
+    try:
+        if project:
+            out = sh(
+                "docker",
+                "ps",
+                "--filter",
+                f"label=com.docker.compose.project={project}",
+                "--format",
+                "{{.Names}}",
+            )
+        else:
+            out = sh("docker", "ps", "--format", "{{.Names}}")
+    except Exception:
+        return {}
+    tracker = ""
+    for name in out.splitlines():
+        if "usage-tracker" in name:
+            tracker = name
+            break
+    if not tracker:
+        return {}
+    code = (
+        "import json,os,sqlite3\n"
+        "db=os.environ.get('USAGE_DB_PATH','/data/usage/usage.db')\n"
+        "try:\n"
+        " c=sqlite3.connect(db)\n"
+        " rows=c.execute('SELECT email,enabled,auto_held FROM account_guard').fetchall()\n"
+        " print(json.dumps({r[0].lower():{'enabled':bool(r[1]),'auto_held':bool(r[2])} for r in rows}))\n"
+        "except Exception:\n"
+        " print('{}')\n"
+    )
+    try:
+        raw = subprocess.check_output(
+            ["docker", "exec", tracker, "python3", "-c", code],
+            text=True,
+            stderr=subprocess.DEVNULL,
+        ).strip()
+        return json.loads(raw or "{}")
+    except Exception:
+        return {}
 
 def human_mins(mins: float | None) -> str:
     if mins is None:
@@ -184,13 +232,16 @@ def main() -> int:
         print("No Claude auth files found in /data/auth.")
         return 0
 
+    guards = load_guards()
     rows: list[dict] = []
     for path in files:
         data = load_auth(api, path)
         email = data.get("email") or "?"
         disabled = bool(data.get("disabled", False))
         mins = token_mins(data.get("expired") or data.get("expires_at"))
-        status, action = account_status(disabled, mins)
+        g = guards.get(email.lower(), {})
+        auto_held = bool(g.get("auto_held"))
+        status, action = account_status(disabled, mins, auto_held)
         token = data.get("access_token") or ""
         if not token:
             code, body = 0, {"error": {"message": "missing access_token"}}
@@ -205,6 +256,8 @@ def main() -> int:
                 "mins": mins,
                 "code": code,
                 "body": body,
+                "guard_on": bool(g.get("enabled")),
+                "auto_held": auto_held,
             }
         )
 
@@ -217,12 +270,18 @@ def main() -> int:
 
     need_relogin: list[str] = []
     paused: list[str] = []
+    held: list[str] = []
+    guarded: list[str] = []
     auth_fail: list[str] = []
 
     for r in sorted(rows, key=lambda x: (token_group(x["mins"]), (x["email"] or "").lower())):
         email = r["email"]
-        if r["status"] == "PAUSED":
+        if r.get("auto_held"):
+            held.append(email)
+        elif r["status"] == "PAUSED":
             paused.append(email)
+        if r.get("guard_on"):
+            guarded.append(email)
         if r["status"] == "EXPIRED" or r["action"] == "needs re-login":
             need_relogin.append(email)
 
@@ -266,9 +325,14 @@ def main() -> int:
     print("-" * len(header))
     print("STATUS/TOKEN = OAuth account routing + access-token TTL (~8h, auto-refreshed).")
     print("5-HOUR/WEEKLY = Anthropic plan usage (same as Claude Settings → Usage).")
-    print("~ = ≥75%   ! = ≥90%")
+    print("HOLD = temporary 5h auto-exclude (ccproxy guard). PAUSED = manual gate (ccproxy pause).")
+    print("~ = >=75%   ! = >=90%")
     print("Day-wise tokens: ccproxy stats")
 
+    if guarded:
+        print("\n🛡  Guard ON (auto-HOLD at 5h>=92%): " + ", ".join(guarded))
+    if held:
+        print("\n⏳ Auto-HOLD (back when 5h resets): " + ", ".join(held))
     if paused:
         print("\n⏸  Paused (not used in round-robin): " + ", ".join(paused))
         print("   Resume:  ccproxy resume <email-or-substring>")
@@ -276,7 +340,7 @@ def main() -> int:
         uniq = sorted(set(need_relogin + auth_fail))
         print("\n⚠️  Needs re-login: " + ", ".join(uniq))
         print("   Run:  ccproxy relogin")
-    elif not paused:
+    elif not paused and not held:
         print("\n✅ All accounts active in round-robin.")
     return 0
 
