@@ -100,8 +100,11 @@ for b in blobs:
             mins = (e - now).total_seconds() / 60
         except Exception:
             pass
-    g = guard_map.get(email.lower(), {})
-    rows.append((email, disabled, mins, last, bool(g.get("auto_held")), bool(g.get("enabled"))))
+    g = guard_map.get(email.lower())
+    # Missing row = guard ON by default
+    guard_on = True if g is None else bool(g.get("enabled"))
+    auto_held = bool(g.get("auto_held")) if g else False
+    rows.append((email, disabled, mins, last, auto_held, guard_on))
 
 if not rows:
     print("No parseable Claude accounts.")
@@ -159,13 +162,14 @@ for email, disabled, mins, last, auto_held, guard_on in sorted(
     print(f"{email:<34} {st:<11} {human_mins(mins):<18} {action}")
 print("-" * 82)
 print("TOKEN = OAuth access-token TTL (~8h, auto-refreshed). Not plan usage. Relogin only if EXPIRED.")
-print("HOLD = temporary 5h auto-exclude (ccproxy guard). PAUSED = manual gate (ccproxy pause).")
+print("High-level PAUSED (ccproxy pause) = never in round-robin.")
+print("Inner GUARD ON (default) = auto-HOLD at 5h>=92%; GUARD OFF = ccproxy guard off.")
 if guarded:
-    print("\n🛡  Guard ON (auto-HOLD at 5h≥92%): " + ", ".join(guarded))
+    print("\n🛡  Guard ON: " + ", ".join(guarded))
 if held:
     print("\n⏳ Auto-HOLD (back when 5h resets): " + ", ".join(held))
 if paused:
-    print("\n⏸  Paused (not used in round-robin): " + ", ".join(paused))
+    print("\n⏸  Paused (high-level; never in round-robin): " + ", ".join(paused))
     print("   Resume:  ccproxy resume <email-or-substring>")
 if need:
     print("\n⚠️  Needs re-login: " + ", ".join(need))

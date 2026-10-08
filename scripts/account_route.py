@@ -210,7 +210,7 @@ conn = sqlite3.connect(db)
 conn.executescript("""
 CREATE TABLE IF NOT EXISTS account_guard (
     email TEXT PRIMARY KEY,
-    enabled INTEGER NOT NULL DEFAULT 0,
+    enabled INTEGER NOT NULL DEFAULT 1,
     auto_held INTEGER NOT NULL DEFAULT 0,
     held_at TEXT,
     last_util REAL,

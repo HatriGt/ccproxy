@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-"""5-hour plan-limit auto-hold for opted-in Claude accounts.
+"""5-hour plan-limit auto-hold (inner gate), under manual pause (high-level).
 
-Separate from manual pause/resume (`disabled` as a high-level gate):
-- Opt-in flag lives in SQLite (`account_guard.enabled`).
-- When 5-hour utilization >= threshold, set CLIProxyAPI `disabled=true`
-  and mark `auto_held=1` (shown as HOLD).
-- When utilization falls back below threshold (window reset), clear
-  `disabled` only if we auto-held it — never resume a manual pause.
+Layers:
+1. High-level: `ccproxy pause` / `resume` — if PAUSED, never in round-robin.
+2. Inner: guard flag (ON by default for every account) — when ON, if 5h
+   utilization >= threshold then temporary HOLD; when the window resets,
+   back in round-robin. `ccproxy guard off` removes the flag.
+
+HOLD never overrides a manual PAUSE; pause/resume clears auto-HOLD ownership.
 """
 from __future__ import annotations
 
@@ -42,7 +43,7 @@ def init_guard_db(conn: sqlite3.Connection) -> None:
         """
         CREATE TABLE IF NOT EXISTS account_guard (
             email       TEXT PRIMARY KEY,
-            enabled     INTEGER NOT NULL DEFAULT 0,
+            enabled     INTEGER NOT NULL DEFAULT 1,
             auto_held   INTEGER NOT NULL DEFAULT 0,
             held_at     TEXT,
             last_util   REAL,
@@ -51,6 +52,24 @@ def init_guard_db(conn: sqlite3.Connection) -> None:
         )
         """
     )
+    conn.commit()
+
+
+def ensure_default_guards(conn: sqlite3.Connection, emails: list[str]) -> None:
+    """Every known account gets guard ON unless explicitly turned off."""
+    now = _now()
+    for email in emails:
+        email = (email or "").strip().lower()
+        if not email:
+            continue
+        conn.execute(
+            """
+            INSERT INTO account_guard (email, enabled, auto_held, updated_at)
+            VALUES (?, 1, 0, ?)
+            ON CONFLICT(email) DO NOTHING
+            """,
+            (email, now),
+        )
     conn.commit()
 
 
@@ -220,25 +239,39 @@ def tick(conn: sqlite3.Connection) -> None:
         log(f"auth dir missing ({AUTH_DIR}); skip tick")
         return
 
-    guards = [g for g in list_guards(conn) if g["enabled"] or g["auto_held"]]
-    if not guards:
-        return
-
     try:
         files = auth_files_api()
     except Exception as e:
         log(f"auth-files list failed: {e}")
         return
 
-    for g in guards:
-        email = g["email"]
-        f = resolve_file(files, email)
-        if not f:
-            log(f"{email}: auth file not found; skip")
+    emails = [(f.get("email") or "").lower() for f in files if f.get("email")]
+    ensure_default_guards(conn, emails)
+    by_email = {g["email"].lower(): g for g in list_guards(conn)}
+
+    for f in files:
+        email = (f.get("email") or "").lower()
+        if not email:
             continue
+        g = by_email.get(email) or {
+            "email": email,
+            "enabled": True,
+            "auto_held": False,
+        }
+        # Guard OFF and not currently auto-held → skip (inner flag removed).
+        # Still process auto_held rows so a stuck HOLD can release.
+        if not g.get("enabled") and not g.get("auto_held"):
+            continue
+
         name = f.get("name") or ""
         disabled = bool(f.get("disabled"))
-        auto_held = bool(g["auto_held"])
+        auto_held = bool(g.get("auto_held"))
+
+        # High-level PAUSE: never touch routing; do not convert to HOLD.
+        if disabled and not auto_held:
+            log(f"{email}: manually PAUSED (high-level); guard skips")
+            time.sleep(0.2)
+            continue
 
         token = load_token(name)
         if not token:
@@ -261,9 +294,6 @@ def tick(conn: sqlite3.Connection) -> None:
         if over:
             if auto_held:
                 log(f"{email}: HOLD stays (5h={util:.0f}% >= {THRESHOLD:.0f}%)")
-            elif disabled:
-                # Manual pause is the high-level gate — do not take ownership.
-                log(f"{email}: over limit but manually PAUSED; leave alone")
             else:
                 try:
                     set_disabled(name, True)
@@ -276,10 +306,10 @@ def tick(conn: sqlite3.Connection) -> None:
                 try:
                     set_disabled(name, False)
                     set_auto_held(conn, email, False, util)
-                    log(f"{email}: HOLD off (5h={util:.0f}% < {THRESHOLD:.0f}%) — back in round-robin")
+                    log(f"{email}: HOLD off (5h={util:.0f}% < {THRESHOLD:.0f}%) - back in round-robin")
                 except Exception as e:
                     log(f"{email}: failed to release HOLD: {e}")
-            elif g["enabled"]:
+            elif g.get("enabled"):
                 log(f"{email}: ok (5h={util:.0f}%)")
 
         time.sleep(0.35)

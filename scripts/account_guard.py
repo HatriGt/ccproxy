@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
-"""Opt accounts into 5-hour auto-hold (separate from manual pause).
+"""5-hour auto-hold flag (inner gate). Manual pause is the high-level gate.
 
-Runs ON the VPS. Guard flags live in usage-tracker SQLite; HOLD uses the
-management API `disabled` flag but is tracked separately from manual pause.
+- Guard is ON by default for every account.
+- `guard off` removes the flag (no auto-HOLD).
+- `guard on` turns it back on.
+- Manual `pause` always wins: PAUSED accounts never enter round-robin.
 
 Usage:
   account_guard.py list
@@ -90,7 +92,7 @@ conn = sqlite3.connect(db)
 conn.executescript("""
 CREATE TABLE IF NOT EXISTS account_guard (
     email TEXT PRIMARY KEY,
-    enabled INTEGER NOT NULL DEFAULT 0,
+    enabled INTEGER NOT NULL DEFAULT 1,
     auto_held INTEGER NOT NULL DEFAULT 0,
     held_at TEXT,
     last_util REAL,
@@ -100,7 +102,26 @@ CREATE TABLE IF NOT EXISTS account_guard (
 """)
 op = cfg["op"]
 now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-if op == "list":
+if op == "seed":
+    for email in cfg.get("emails") or []:
+        email = (email or "").lower().strip()
+        if not email:
+            continue
+        conn.execute(
+            "INSERT INTO account_guard (email, enabled, auto_held, updated_at) VALUES (?, 1, 0, ?) "
+            "ON CONFLICT(email) DO NOTHING",
+            (email, now),
+        )
+    conn.commit()
+    rows = conn.execute(
+        "SELECT email, enabled, auto_held, last_util, held_at, last_check FROM account_guard"
+    ).fetchall()
+    print(json.dumps([
+        {"email": r[0], "enabled": bool(r[1]), "auto_held": bool(r[2]),
+         "last_util": r[3], "held_at": r[4], "last_check": r[5]}
+        for r in rows
+    ]))
+elif op == "list":
     rows = conn.execute(
         "SELECT email, enabled, auto_held, last_util, held_at, last_check FROM account_guard"
     ).fetchall()
@@ -175,23 +196,26 @@ def print_list(guards: list[dict], files: list[dict]) -> None:
     print("-" * 78)
     for f in sorted(files, key=lambda x: (x.get("email") or "").lower()):
         email = f.get("email") or "?"
-        g = by_email.get(email.lower(), {})
-        guard = "ON" if g.get("enabled") else "-"
-        hold = "YES" if g.get("auto_held") else "-"
-        util = g.get("last_util")
+        g = by_email.get(email.lower())
+        # Missing row = default ON
+        guard_on = True if g is None else bool(g.get("enabled"))
+        auto_held = bool(g.get("auto_held")) if g else False
+        guard = "ON" if guard_on else "OFF"
+        hold = "YES" if auto_held else "-"
+        util = g.get("last_util") if g else None
         util_s = f"{util:.0f}%" if isinstance(util, (int, float)) else "-"
-        if g.get("auto_held"):
-            route = "HOLD"
-        elif f.get("disabled"):
+        if f.get("disabled") and not auto_held:
             route = "PAUSED"
+        elif auto_held:
+            route = "HOLD"
         else:
             route = "ACTIVE"
         print(f"{email:<34} {guard:<8} {hold:<6} {util_s:<8} {route}")
     print("-" * 78)
-    print("GUARD ON = opted into 5h auto-hold (>=92%). HOLD = temporarily excluded by guard.")
-    print("PAUSED = manual ccproxy pause (high-level gate; guard will not override it).")
-    print("Enable:  ccproxy guard on <email>")
-    print("Disable: ccproxy guard off <email>")
+    print("High-level: PAUSED (ccproxy pause) = never in round-robin.")
+    print("Inner:      GUARD ON (default) = auto-HOLD when 5h >= 92%; back when window resets.")
+    print("            GUARD OFF = no auto-HOLD for that account.")
+    print("Toggle:     ccproxy guard on|off <email>")
 
 
 def main() -> None:
@@ -207,11 +231,15 @@ def main() -> None:
     key = mgmt_key(api)
     files = list_auth(tracker, key)
 
+    emails = [(f.get("email") or "").lower() for f in files if f.get("email")]
+    # Seed defaults (ON) for any account missing a row.
+    seeded = db_call(tracker, {"op": "seed", "emails": emails})
+    if isinstance(seeded, dict) and seeded.get("error"):
+        raise SystemExit(seeded["error"])
+    guards = seeded if isinstance(seeded, list) else []
+
     if action in ("list", "ls", "status"):
-        guards = db_call(tracker, {"op": "list"})
-        if isinstance(guards, dict) and guards.get("error"):
-            raise SystemExit(guards["error"])
-        print_list(guards if isinstance(guards, list) else [], files)
+        print_list(guards, files)
         return
 
     if action not in ("on", "enable", "off", "disable"):
@@ -225,23 +253,27 @@ def main() -> None:
     name = target.get("name") or ""
     want_on = action in ("on", "enable")
 
-    before = db_call(tracker, {"op": "list"})
-    prev = next((g for g in before if g["email"].lower() == email), {}) if isinstance(before, list) else {}
+    prev = next((g for g in guards if g["email"].lower() == email), {})
+    # Missing row counted as ON (default)
+    was_on = True if not prev else bool(prev.get("enabled"))
     was_held = bool(prev.get("auto_held"))
 
     result = db_call(tracker, {"op": "set", "email": email, "enabled": want_on})
 
     if not want_on and was_held:
-        api_call(tracker, key, "PATCH", "/auth-files/status", {"name": name, "disabled": False})
+        # Only release routing if this was our HOLD, not a manual pause.
+        if not bool(target.get("disabled")) or was_held:
+            api_call(tracker, key, "PATCH", "/auth-files/status", {"name": name, "disabled": False})
         db_call(tracker, {"op": "clear_hold", "email": email})
-        print(f"Guard OFF for {email} (released HOLD -> back in round-robin)")
-    elif want_on and prev.get("enabled"):
+        print(f"Guard OFF for {email} (released HOLD -> eligible for round-robin)")
+        print("Note: manual PAUSE still blocks round-robin until: ccproxy resume ...")
+    elif want_on and was_on:
         print(f"No change: guard already ON for {email}")
     elif want_on:
         print(f"Guard ON for {email}")
-        print("Will HOLD (exclude from round-robin) when 5-hour usage reaches 92%.")
+        print("Inner gate: auto-HOLD when 5-hour usage reaches 92%.")
     else:
-        print(f"Guard OFF for {email}")
+        print(f"Guard OFF for {email} (no auto-HOLD; pause/resume still apply)")
 
     _ = result
 

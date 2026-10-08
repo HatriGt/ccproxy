@@ -239,8 +239,10 @@ def main() -> int:
         email = data.get("email") or "?"
         disabled = bool(data.get("disabled", False))
         mins = token_mins(data.get("expired") or data.get("expires_at"))
-        g = guards.get(email.lower(), {})
-        auto_held = bool(g.get("auto_held"))
+        g = guards.get(email.lower())
+        # Missing row = guard ON by default
+        guard_on = True if g is None else bool(g.get("enabled"))
+        auto_held = bool(g.get("auto_held")) if g else False
         status, action = account_status(disabled, mins, auto_held)
         token = data.get("access_token") or ""
         if not token:
@@ -256,7 +258,7 @@ def main() -> int:
                 "mins": mins,
                 "code": code,
                 "body": body,
-                "guard_on": bool(g.get("enabled")),
+                "guard_on": guard_on,
                 "auto_held": auto_held,
             }
         )
@@ -325,16 +327,17 @@ def main() -> int:
     print("-" * len(header))
     print("STATUS/TOKEN = OAuth account routing + access-token TTL (~8h, auto-refreshed).")
     print("5-HOUR/WEEKLY = Anthropic plan usage (same as Claude Settings → Usage).")
-    print("HOLD = temporary 5h auto-exclude (ccproxy guard). PAUSED = manual gate (ccproxy pause).")
+    print("High-level PAUSED (ccproxy pause) = never in round-robin.")
+    print("Inner GUARD ON (default) = auto-HOLD at 5h>=92%; off via: ccproxy guard off.")
     print("~ = >=75%   ! = >=90%")
     print("Day-wise tokens: ccproxy stats")
 
     if guarded:
-        print("\n🛡  Guard ON (auto-HOLD at 5h>=92%): " + ", ".join(guarded))
+        print("\n🛡  Guard ON: " + ", ".join(guarded))
     if held:
         print("\n⏳ Auto-HOLD (back when 5h resets): " + ", ".join(held))
     if paused:
-        print("\n⏸  Paused (not used in round-robin): " + ", ".join(paused))
+        print("\n⏸  Paused (high-level; never in round-robin): " + ", ".join(paused))
         print("   Resume:  ccproxy resume <email-or-substring>")
     if need_relogin or auth_fail:
         uniq = sorted(set(need_relogin + auth_fail))
