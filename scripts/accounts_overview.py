@@ -180,6 +180,35 @@ def token_group(mins: float | None) -> int:
     return 0
 
 
+def print_table(headers: list[str], rows: list[list[str]]) -> None:
+    """Render a bordered terminal table (box-drawing)."""
+    cols = len(headers)
+    widths = [len(h) for h in headers]
+    norm_rows: list[list[str]] = []
+    for row in rows:
+        cells = [(c if c is not None else "") for c in row]
+        while len(cells) < cols:
+            cells.append("")
+        cells = cells[:cols]
+        for i, c in enumerate(cells):
+            widths[i] = max(widths[i], len(c))
+        norm_rows.append(cells)
+
+    def sep(left: str, mid: str, right: str, fill: str = "─") -> str:
+        return left + mid.join(fill * (w + 2) for w in widths) + right
+
+    def line(cells: list[str]) -> str:
+        parts = [f" {cells[i]:<{widths[i]}} " for i in range(cols)]
+        return "│" + "│".join(parts) + "│"
+
+    print(sep("┌", "┬", "┐"))
+    print(line(headers))
+    print(sep("├", "┼", "┤"))
+    for cells in norm_rows:
+        print(line(cells))
+    print(sep("└", "┴", "┘"))
+
+
 def pct(v) -> str:
     if v is None:
         return "-"
@@ -263,17 +292,14 @@ def main() -> int:
             }
         )
 
-    header = (
-        f"{'ACCOUNT':<34} {'STATUS':<9} {'GUARD':<6} {'TOKEN':<16} "
-        f"{'5-HOUR':<8} {'5H RESET':<22} {'WEEKLY':<8} {'WEEK RESET / NOTE'}"
-    )
-    print(header)
-    print("-" * len(header))
+    headers = ["ACCOUNT", "STATUS", "GUARD", "TOKEN", "5-HOUR", "5H RESET", "WEEKLY", "WEEK / NOTE"]
+    table_rows: list[list[str]] = []
 
     need_relogin: list[str] = []
     paused: list[str] = []
     held: list[str] = []
     guarded: list[str] = []
+    unguarded: list[str] = []
     auth_fail: list[str] = []
 
     for r in sorted(rows, key=lambda x: (token_group(x["mins"]), (x["email"] or "").lower())):
@@ -285,15 +311,25 @@ def main() -> int:
             paused.append(email)
         if r.get("guard_on"):
             guarded.append(email)
+        else:
+            unguarded.append(email)
         if r["status"] == "EXPIRED" or r["action"] == "needs re-login":
             need_relogin.append(email)
 
         code, body = r["code"], r["body"]
         if code != 200:
             err = (body.get("error") or {}).get("message") or f"HTTP {code}"
-            print(
-                f"{email:<34} {r['status']:<9} {guard_col:<6} {human_mins(r['mins']):<16} "
-                f"{'ERR':<8} {err[:60]}"
+            table_rows.append(
+                [
+                    email,
+                    r["status"],
+                    guard_col,
+                    human_mins(r["mins"]),
+                    "ERR",
+                    err[:48],
+                    "-",
+                    "-",
+                ]
             )
             if code in (401, 403) or "expired" in err.lower() or "re-authenticate" in err.lower():
                 auth_fail.append(email)
@@ -303,12 +339,7 @@ def main() -> int:
         week = body.get("seven_day") or {}
         f_col = f"{pct(five.get('utilization'))}{mark(five.get('utilization'))}"
         w_col = f"{pct(week.get('utilization'))}{mark(week.get('utilization'))}"
-        print(
-            f"{email:<34} {r['status']:<9} {guard_col:<6} {human_mins(r['mins']):<16} "
-            f"{f_col:<8} {reset_human(five.get('resets_at')):<22} "
-            f"{w_col:<8} {reset_human(week.get('resets_at'))}"
-        )
-
+        notes: list[str] = [reset_human(week.get("resets_at"))]
         for lim in body.get("limits") or []:
             if lim.get("kind") != "weekly_scoped":
                 continue
@@ -316,36 +347,43 @@ def main() -> int:
             p = lim.get("percent")
             if p is None:
                 continue
-            note = f"weekly - {scope}"
+            bit = f"{pct(p)}{mark(p)} {scope}"
             if lim.get("resets_at"):
-                note += f" ({reset_human(lim.get('resets_at'))})"
-            p_col = f"{pct(p)}{mark(p)}"
-            print(
-                f"{'':<34} {'':<9} {'':<6} {'':<16} "
-                f"{'':<8} {'':<22} {p_col:<8} {note}"
-            )
+                bit += f" ({reset_human(lim.get('resets_at'))})"
+            notes.append(bit)
+        table_rows.append(
+            [
+                email,
+                r["status"],
+                guard_col,
+                human_mins(r["mins"]),
+                f_col,
+                reset_human(five.get("resets_at")),
+                w_col,
+                "; ".join(n for n in notes if n and n != "-") or "-",
+            ]
+        )
 
-    print("-" * len(header))
-    print("STATUS/TOKEN = OAuth account routing + access-token TTL (~8h, auto-refreshed).")
-    print("5-HOUR/WEEKLY = Anthropic plan usage (same as Claude Settings → Usage).")
-    print("High-level PAUSED (ccproxy pause) = never in round-robin.")
-    print("Inner GUARD ON (default) = auto-HOLD at 5h>=92%; off via: ccproxy guard off.")
-    print("~ = >=75%   ! = >=90%")
-    print("Day-wise tokens: ccproxy stats")
+    print_table(headers, table_rows)
+    print()
+    print("STATUS/TOKEN = OAuth routing + access-token TTL (~8h, auto-refreshed).")
+    print("5-HOUR/WEEKLY = Anthropic plan usage (Claude Settings -> Usage).")
+    print("PAUSED = high-level gate (ccproxy pause). GUARD = inner 5h auto-HOLD (>=92%).")
+    print("~ = >=75%   ! = >=90%    Day-wise tokens: ccproxy stats")
 
     if guarded:
-        print("\n🛡  Guard ON: " + ", ".join(guarded))
+        print("\nGuard ON:  " + ", ".join(guarded))
+    if unguarded:
+        print("Guard OFF: " + ", ".join(unguarded))
     if held:
-        print("\n⏳ Auto-HOLD (back when 5h resets): " + ", ".join(held))
+        print("Auto-HOLD: " + ", ".join(held) + "  (back when 5h resets)")
     if paused:
-        print("\n⏸  Paused (high-level; never in round-robin): " + ", ".join(paused))
-        print("   Resume:  ccproxy resume <email-or-substring>")
+        print("Paused:    " + ", ".join(paused) + "  (ccproxy resume <email>)")
     if need_relogin or auth_fail:
         uniq = sorted(set(need_relogin + auth_fail))
-        print("\n⚠️  Needs re-login: " + ", ".join(uniq))
-        print("   Run:  ccproxy relogin")
+        print("Re-login:  " + ", ".join(uniq) + "  (ccproxy relogin)")
     elif not paused and not held:
-        print("\n✅ All accounts active in round-robin.")
+        print("\nAll accounts active in round-robin.")
     return 0
 
 
