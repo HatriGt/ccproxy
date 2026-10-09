@@ -13,7 +13,7 @@ services:
         # Pinned, deliberately NOT ${CLIPROXY_IMAGE_TAG}: Dokploy rewrites .env from
         # its own stored config on every git-triggered deploy, so the tag must
         # live in compose. Bump this when promoting a new CLIProxyAPI release.
-        CLIPROXY_UPSTREAM_TAG: v8.0.20
+        CLIPROXY_UPSTREAM_TAG: v8.0.22
     image: ${CLIPROXY_API_IMAGE:-ccproxy-cli-proxy-api:local}
     restart: unless-stopped
     env_file:
