@@ -6,7 +6,7 @@
 # every effort variant present in each. Keep them symmetric: a half-populated
 # set means whichever convention a client reaches for, some member is missing
 # and returns a bare "model not available" that looks like an outage.
-# The -low/-medium/-high suffixes match the ak-claude-*-<effort> wildcards in
+# The -low/-medium/-high suffixes match the ak-*-<effort> wildcards in
 # config.yaml.template, so both spellings pick up effort identically.
 # Needs CLIPROXY_UPSTREAM_TAG >= v7.3.17 (claude-cli/2.1.280); older images are
 # rejected upstream with claude_code_version_too_old.

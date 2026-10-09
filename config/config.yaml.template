@@ -43,24 +43,24 @@ request-log: ${CCPROXY_REQUEST_LOG}
 usage-statistics-enabled: ${CCPROXY_USAGE_STATS}
 
 # Auto effort from alias suffix. After this, only `ccproxy add-model` is needed:
-#   ccproxy add-model ak-claude-opus-4.9-low claude-opus-4-9
+#   ccproxy add-model ak-claude-opus-4.9-low claude-opus-4-9   (or ak-opus-4.9-low)
 # maps to plain upstream + injects output_config.effort via the matching wildcard.
 # Do NOT put (low)/(high) in the upstream name — that breaks routing.
 # Only output_config.effort — Anthropic rejects reasoning_effort on /v1/messages.
 payload:
   override:
     - models:
-        - name: "ak-claude-*-low"
+        - name: "ak-*-low"
           protocol: "claude"
       params:
         "output_config.effort": "low"
     - models:
-        - name: "ak-claude-*-medium"
+        - name: "ak-*-medium"
           protocol: "claude"
       params:
         "output_config.effort": "medium"
     - models:
-        - name: "ak-claude-*-high"
+        - name: "ak-*-high"
           protocol: "claude"
       params:
         "output_config.effort": "high"
