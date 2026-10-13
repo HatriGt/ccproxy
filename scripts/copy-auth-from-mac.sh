@@ -197,8 +197,9 @@ for f in "${REMOTE_DIR}"/auth-import/claude-*.json; do
   rm -f "$f"
 done
 
-docker restart "$api" >/dev/null && echo "  restarted $api"
-[ -n "$shim" ] && docker restart "$shim" >/dev/null && echo "  restarted $shim"
+docker restart "$api" >/dev/null
+echo "  restarted $api"
+if [ -n "$shim" ]; then docker restart "$shim" >/dev/null; echo "  restarted $shim"; fi
 REMOTE
 
 echo "OK: auth copied and stack restarted"

@@ -11,9 +11,6 @@ source "${ROOT}/scripts/load-env.sh"
 # Disambiguates the api/shim container when several compose stacks exist.
 export CCPROXY_PROJECT="${COMPOSE_PROJECT_NAME:-}"
 
-# Disambiguates the api/shim container when several compose stacks exist.
-export CCPROXY_PROJECT="${COMPOSE_PROJECT_NAME:-}"
-
 VPS_HOST="${VPS_SSH_HOST:-${CLIPROXY_VPS_SSH_HOST:-hostbrr}}"
 BASE_URL="${CURSOR_BASE_URL:-https://${PUBLIC_HOSTNAME}/v1}"
 LABEL="${1:-login}"
@@ -43,6 +40,13 @@ ssh -t "$VPS_HOST" \
    echo ""
    docker exec -it "$api" /CLIProxyAPI/CLIProxyAPI -config /CLIProxyAPI/config.yaml -no-browser --claude-login'
 
+# CLIProxyAPI >= v7.3 writes a new record as claude-<uuid>-<email>.json rather
+# than overwriting an existing claude-<email>.json, so a relogin can leave two
+# files for one account. Collapse them before the restart.
+echo ""
+"${ROOT}/scripts/normalize-auth.sh" \
+  || echo "WARN: auth normalisation failed — run: ccproxy normalize-auth" >&2
+
 echo ""
 echo "Restarting api + shim..."
 ssh "$VPS_HOST" \
@@ -50,8 +54,8 @@ ssh "$VPS_HOST" \
    [ -n "$api" ] || api=$(docker ps --format "{{.Names}}" | grep -E "ccproxy.*cli-proxy-api" | head -1)
    shim=$(docker ps --filter "label=com.docker.compose.project='"$CCPROXY_PROJECT"'" --format "{{.Names}}" | grep -E "cursor-shim" | head -1 || true)
    [ -n "$shim" ] || shim=$(docker ps --format "{{.Names}}" | grep -E "ccproxy.*cursor-shim" | head -1 || true)
-   [ -n "$api" ] && docker restart "$api" >/dev/null && echo "  restarted $api"
-   [ -n "$shim" ] && docker restart "$shim" >/dev/null && echo "  restarted $shim"'
+   if [ -n "$api" ]; then docker restart "$api" >/dev/null; echo "  restarted $api"; fi
+   if [ -n "$shim" ]; then docker restart "$shim" >/dev/null; echo "  restarted $shim"; fi'
 
 # Race fix: wait until public /v1/models responds before health-check.
 echo "Waiting for API..."
@@ -64,7 +68,7 @@ for i in $(seq 1 30); do
     "${BASE_URL}/models" -H "Authorization: Bearer ${API_KEY}" || echo 000)
   if [ "$code" = "200" ]; then
     ready=1
-    echo "  API ready (${i}s)"
+    echo "  API ready (~$((i * 2))s)"
     break
   fi
   sleep 2
