@@ -61,10 +61,68 @@ function flattenToolResultContent(content) {
       if (block.type === "text") {
         return block.text || "";
       }
+      // Images are carried separately via extractImageParts, not as JSON text.
+      if (toImagePart(block)) {
+        return "";
+      }
       return JSON.stringify(block);
     })
     .filter(Boolean)
     .join("\n\n");
+}
+
+/**
+ * Convert an Anthropic image block or OpenAI image_url part into an OpenAI
+ * image_url content part. Returns null for anything that is not an image.
+ *
+ * @param {unknown} block
+ * @returns {Record<string, unknown> | null}
+ */
+function toImagePart(block) {
+  if (!block || typeof block !== "object") {
+    return null;
+  }
+  const b = /** @type {Record<string, any>} */ (block);
+  if (b.type === "image_url" && b.image_url) {
+    return { type: "image_url", image_url: b.image_url };
+  }
+  if (b.type === "image" && b.source) {
+    if (b.source.type === "base64" && b.source.data) {
+      const mediaType = b.source.media_type || "image/png";
+      return { type: "image_url", image_url: { url: `data:${mediaType};base64,${b.source.data}` } };
+    }
+    if (b.source.type === "url" && b.source.url) {
+      return { type: "image_url", image_url: { url: b.source.url } };
+    }
+  }
+  return null;
+}
+
+/**
+ * @param {unknown} content
+ * @returns {Array<Record<string, unknown>>}
+ */
+function extractImageParts(content) {
+  if (!Array.isArray(content)) {
+    return [];
+  }
+  return content.map(toImagePart).filter((p) => p !== null);
+}
+
+/**
+ * Build OpenAI user content: a plain string when text-only, otherwise an array
+ * of text + image_url parts so pasted images survive conversion.
+ *
+ * @param {string[]} textParts
+ * @param {Array<Record<string, unknown>>} imageParts
+ * @returns {string | Array<Record<string, unknown>>}
+ */
+function buildUserContent(textParts, imageParts) {
+  const text = textParts.join("\n");
+  if (imageParts.length === 0) {
+    return text;
+  }
+  return [...(text ? [{ type: "text", text }] : []), ...imageParts];
 }
 
 /**
@@ -135,11 +193,15 @@ function convertMessages(messages) {
 
     if (role === "user") {
       const textParts = [];
+      const imageParts = [];
       const toolResults = [];
       const orphanResults = [];
 
       for (const block of blocks) {
-        if (block.type === "text" && typeof block.text === "string" && block.text.trim()) {
+        const image = toImagePart(block);
+        if (image) {
+          imageParts.push(image);
+        } else if (block.type === "text" && typeof block.text === "string" && block.text.trim()) {
           textParts.push(block.text);
         } else if (block.type === "tool_result") {
           if (knownToolCallIds.has(block.tool_use_id)) {
@@ -150,8 +212,12 @@ function convertMessages(messages) {
         }
       }
 
+      // Tool messages stay text-only; images returned by tools (screenshots etc.)
+      // ride along in the user message that follows the tool results.
+      const toolImageParts = [];
       for (const tr of toolResults) {
         knownToolCallIds.delete(tr.tool_use_id);
+        toolImageParts.push(...extractImageParts(tr.content));
         out.push({
           role: "tool",
           tool_call_id: tr.tool_use_id,
@@ -162,11 +228,16 @@ function convertMessages(messages) {
       // Fold orphaned tool results into plain user text so context is preserved
       // without violating the tool_use/tool_result pairing contract.
       for (const tr of orphanResults) {
-        textParts.push(flattenToolResultContent(tr.content));
+        const text = flattenToolResultContent(tr.content);
+        if (text) {
+          textParts.push(text);
+        }
+        toolImageParts.push(...extractImageParts(tr.content));
       }
 
-      if (textParts.length > 0) {
-        out.push({ role: "user", content: textParts.join("\n") });
+      const allImages = [...toolImageParts, ...imageParts];
+      if (textParts.length > 0 || allImages.length > 0) {
+        out.push({ role: "user", content: buildUserContent(textParts, allImages) });
       }
       continue;
     }
@@ -251,8 +322,17 @@ function normalizeToolPairing(messages) {
   /** @type {Array<Record<string, unknown>>} */
   const out = [];
   const openToolCallIds = new Set();
+  // Images from tool messages, flushed as one user message after the run of
+  // tool messages so they don't split a parallel tool_call/tool block.
+  /** @type {Array<Record<string, unknown>>} */
+  let pendingToolImages = [];
 
   for (const msg of messages) {
+    if (pendingToolImages.length > 0 && msg?.role !== "tool") {
+      out.push({ role: "user", content: buildUserContent([], pendingToolImages) });
+      pendingToolImages = [];
+    }
+
     if (!msg || typeof msg !== "object") {
       out.push(msg);
       continue;
@@ -291,16 +371,27 @@ function normalizeToolPairing(messages) {
 
     if (msg.role === "tool") {
       // Orphan tool result (no matching open tool_call) → fold into user text.
+      const images = extractImageParts(msg.content);
       if (msg.tool_call_id == null || !openToolCallIds.has(msg.tool_call_id)) {
-        out.push({ role: "user", content: flattenToolResultContent(msg.content) });
+        const text = flattenToolResultContent(msg.content);
+        out.push({ role: "user", content: buildUserContent(text ? [text] : [], images) });
         continue;
       }
       openToolCallIds.delete(msg.tool_call_id);
-      out.push(msg);
+      if (images.length > 0) {
+        pendingToolImages.push(...images);
+        out.push({ ...msg, content: flattenToolResultContent(msg.content) });
+      } else {
+        out.push(msg);
+      }
       continue;
     }
 
     out.push(msg);
+  }
+
+  if (pendingToolImages.length > 0) {
+    out.push({ role: "user", content: buildUserContent([], pendingToolImages) });
   }
 
   return out;
