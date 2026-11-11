@@ -96,8 +96,14 @@ docker exec <api-container> sh -c \
   'grep -ao "claude-cli/[0-9.]*" /CLIProxyAPI/CLIProxyAPI | sort -u'
 ```
 
-`claude-opus-5-5` requires `claude-cli/2.1.280` (ships in `v7.3.17`); older
-images are rejected upstream with `claude_code_version_too_old`.
+| Model | Min `claude-cli` | First upstream tag that sends it |
+|-------|------------------|----------------------------------|
+| `claude-opus-5-5` | `2.1.280` | `v7.3.17` |
+| `claude-fable-5-2` | `2.1.290` | `v8.0.67` (sends `2.1.321`; `v8.0.20`–`v8.0.66` send `2.1.280`) |
+
+Older images are rejected upstream with HTTP 400 `claude_code_version_too_old`
+("Claude Code 2.1.x does not support this model"). The client's own Claude Code
+version doesn't matter here — the proxy sends its own fingerprint.
 
 ## Backup OAuth tokens
 

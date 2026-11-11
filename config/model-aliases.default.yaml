@@ -30,6 +30,10 @@
   name: claude-sonnet-5
 - alias: ak-claude-fable-5-low
   name: claude-fable-5
+# Fable 5.2 needs CLIPROXY_UPSTREAM_TAG >= v8.0.67 (claude-cli/2.1.321; model
+# requires >= 2.1.290). Older images get claude_code_version_too_old.
+- alias: ak-claude-fable-5-2-low
+  name: claude-fable-5-2
 # Effort variants share the same upstream model; effort is forced via
 # payload.override in config.yaml.template (do NOT put (low)/(high) in name).
 - alias: ak-claude-opus-4.8
