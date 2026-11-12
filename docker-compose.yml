@@ -49,7 +49,9 @@ services:
       USAGE_BATCH: ${USAGE_BATCH:-200}
       # 5-hour auto-hold (opt-in per account via `ccproxy guard on`)
       GUARD_ENABLED: ${GUARD_ENABLED:-true}
-      GUARD_FIVEHOUR_PCT: ${GUARD_FIVEHOUR_PCT:-92}
+      GUARD_FIVEHOUR_PCT: ${GUARD_FIVEHOUR_PCT:-85}
+      GUARD_WEEKLY_PCT: ${GUARD_WEEKLY_PCT:-85}
+      GUARD_SCOPED_PCT: ${GUARD_SCOPED_PCT:-85}
       GUARD_POLL_SECS: ${GUARD_POLL_SECS:-60}
       CLIPROXY_AUTH_DIR: /data/auth
     volumes:

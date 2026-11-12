@@ -213,7 +213,7 @@ def print_list(guards: list[dict], files: list[dict]) -> None:
         print(f"{email:<34} {guard:<8} {hold:<6} {util_s:<8} {route}")
     print("-" * 78)
     print("High-level: PAUSED (ccproxy pause) = never in round-robin.")
-    print("Inner:      GUARD ON (default) = auto-HOLD when 5h >= 92%; back when window resets.")
+    print("Inner:      GUARD ON (default) = auto-HOLD when 5h >= 85% or weekly >= 85%; back when windows reset.")
     print("            GUARD OFF = no auto-HOLD for that account.")
     print("Toggle:     ccproxy guard on|off <email>")
 
@@ -271,7 +271,7 @@ def main() -> None:
         print(f"No change: guard already ON for {email}")
     elif want_on:
         print(f"Guard ON for {email}")
-        print("Inner gate: auto-HOLD when 5-hour usage reaches 92%.")
+        print("Inner gate: auto-HOLD when 5-hour or weekly usage reaches 85%.")
     else:
         print(f"Guard OFF for {email} (no auto-HOLD; pause/resume still apply)")
 

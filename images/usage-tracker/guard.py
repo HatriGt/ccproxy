@@ -4,7 +4,8 @@
 Layers:
 1. High-level: `ccproxy pause` / `resume` — if PAUSED, never in round-robin.
 2. Inner: guard flag (ON by default for every account) — when ON, if 5h
-   utilization >= threshold then temporary HOLD; when the window resets,
+   utilization >= threshold (or weekly utilization >= weekly threshold) then
+   temporary HOLD; when the window(s) reset,
    back in round-robin. `ccproxy guard off` removes the flag.
 
 HOLD never overrides a manual PAUSE; pause/resume clears auto-HOLD ownership.
@@ -30,8 +31,20 @@ HEADERS_EXTRA = {
 AUTH_DIR = Path(os.environ.get("CLIPROXY_AUTH_DIR", "/data/auth"))
 UPSTREAM = os.environ.get("CLIPROXY_UPSTREAM", "http://cli-proxy-api:8318").rstrip("/")
 MGMT_KEY = os.environ.get("CLIPROXY_MGMT_KEY", "")
-THRESHOLD = float(os.environ.get("GUARD_FIVEHOUR_PCT", "92"))
+THRESHOLD = float(os.environ.get("GUARD_FIVEHOUR_PCT", "85"))
+WEEKLY_THRESHOLD = float(os.environ.get("GUARD_WEEKLY_PCT", "85"))
+SCOPED_THRESHOLD = float(os.environ.get("GUARD_SCOPED_PCT", "85"))
 POLL_SECS = int(os.environ.get("GUARD_POLL_SECS", "60"))
+# Anthropic rate-limits the usage endpoint, so each account is polled on its own
+# schedule: often when close to a limit, rarely when far from it, with backoff on
+# errors. While reads fail, the last good reading decides (fail-safe hold).
+SLOW_POLL_SECS = int(os.environ.get("GUARD_SLOW_POLL_SECS", "300"))
+MAX_BACKOFF_SECS = int(os.environ.get("GUARD_MAX_BACKOFF_SECS", "900"))
+FAILSAFE_MARGIN = float(os.environ.get("GUARD_FAILSAFE_MARGIN", "10"))
+FAILSAFE_MAX_AGE_SECS = int(os.environ.get("GUARD_FAILSAFE_MAX_AGE_SECS", "3600"))
+
+# email -> {"next": epoch, "backoff": secs, "last": Usage, "last_ts": epoch}
+_STATE: dict[str, dict] = {}
 
 
 def log(msg: str) -> None:
@@ -52,7 +65,36 @@ def init_guard_db(conn: sqlite3.Connection) -> None:
         )
         """
     )
+    # Last good usage reading, so the fail-safe survives restarts.
+    for col, typ in (("last_reading", "TEXT"), ("last_reading_ts", "REAL")):
+        try:
+            conn.execute(f"ALTER TABLE account_guard ADD COLUMN {col} {typ}")
+        except sqlite3.OperationalError:
+            pass  # already exists
     conn.commit()
+
+
+def save_reading(conn: sqlite3.Connection, email: str, reading: tuple, ts: float) -> None:
+    util, week, scoped = reading
+    conn.execute(
+        "UPDATE account_guard SET last_reading=?, last_reading_ts=? WHERE email=?",
+        (json.dumps({"five_hour": util, "seven_day": week, "scoped": scoped}), ts, email),
+    )
+    conn.commit()
+
+
+def load_reading(conn: sqlite3.Connection, email: str) -> tuple[tuple | None, float]:
+    row = conn.execute(
+        "SELECT last_reading, last_reading_ts FROM account_guard WHERE email=?", (email,)
+    ).fetchone()
+    if not row or not row[0]:
+        return None, 0.0
+    try:
+        d = json.loads(row[0])
+        scoped = [(m, float(p)) for m, p in d.get("scoped") or []]
+        return (d.get("five_hour"), d.get("seven_day"), scoped), float(row[1] or 0)
+    except Exception:
+        return None, 0.0
 
 
 def ensure_default_guards(conn: sqlite3.Connection, emails: list[str]) -> None:
@@ -199,7 +241,14 @@ def load_token(name: str) -> str:
     return data.get("access_token") or ""
 
 
-def fetch_fivehour_util(token: str) -> float | None:
+class RateLimited(RuntimeError):
+    def __init__(self, msg: str, retry_after: float | None):
+        super().__init__(msg)
+        self.retry_after = retry_after
+
+
+def fetch_util(token: str) -> tuple[float | None, float | None, list[tuple[str, float]]]:
+    """Return (five_hour, seven_day, [(model, pct)...] per-model weekly limits)."""
     req = urllib.request.Request(
         USAGE_URL,
         headers={"Authorization": f"Bearer {token}", **HEADERS_EXTRA},
@@ -214,12 +263,48 @@ def fetch_fivehour_util(token: str) -> float | None:
         except Exception:
             err = {"error": {"message": str(e)}}
         msg = (err.get("error") or {}).get("message") or f"HTTP {e.code}"
+        if e.code == 429:
+            ra = e.headers.get("retry-after") if e.headers else None
+            try:
+                ra_secs = float(ra) if ra else None
+            except ValueError:
+                ra_secs = None
+            raise RateLimited(msg, ra_secs) from e
         raise RuntimeError(msg) from e
-    five = body.get("five_hour") or {}
-    util = five.get("utilization")
-    if util is None:
-        return None
-    return float(util)
+    def pct(key: str) -> float | None:
+        v = (body.get(key) or {}).get("utilization")
+        return None if v is None else float(v)
+
+    scoped = []
+    for lim in body.get("limits") or []:
+        if lim.get("kind") != "weekly_scoped" or lim.get("percent") is None:
+            continue
+        model = ((lim.get("scope") or {}).get("model") or {}).get("display_name") or "scoped"
+        scoped.append((model, float(lim["percent"])))
+    return pct("five_hour"), pct("seven_day"), scoped
+
+
+def hold_reasons(util, week, scoped) -> list[str]:
+    reasons = []
+    if util is not None and util >= THRESHOLD:
+        reasons.append(f"5h={util:.0f}% >= {THRESHOLD:.0f}%")
+    if week is not None and week >= WEEKLY_THRESHOLD:
+        reasons.append(f"7d={week:.0f}% >= {WEEKLY_THRESHOLD:.0f}%")
+    for model, p in scoped:
+        if p >= SCOPED_THRESHOLD:
+            reasons.append(f"7d {model}={p:.0f}% >= {SCOPED_THRESHOLD:.0f}%")
+    return reasons
+
+
+def headroom(util, week, scoped) -> float:
+    """Smallest gap (in %) between any reading and its threshold."""
+    gaps = []
+    if util is not None:
+        gaps.append(THRESHOLD - util)
+    if week is not None:
+        gaps.append(WEEKLY_THRESHOLD - week)
+    gaps += [SCOPED_THRESHOLD - p for _, p in scoped]
+    return min(gaps) if gaps else 100.0
 
 
 def resolve_file(files: list[dict], email: str) -> dict | None:
@@ -273,32 +358,68 @@ def tick(conn: sqlite3.Connection) -> None:
             time.sleep(0.2)
             continue
 
+        st = _STATE.get(email)
+        if st is None:
+            last, last_ts = load_reading(conn, email)
+            st = _STATE[email] = {"next": 0.0, "backoff": 0.0, "last": last, "last_ts": last_ts}
+        now = time.time()
+        if now < st["next"]:
+            continue
+
         token = load_token(name)
         if not token:
             log(f"{email}: no access_token; skip")
             continue
 
         try:
-            util = fetch_fivehour_util(token)
+            util, week, scoped = fetch_util(token)
         except Exception as e:
-            log(f"{email}: usage fetch failed: {e}")
+            base = e.retry_after if isinstance(e, RateLimited) and e.retry_after else 0
+            st["backoff"] = min(max(st["backoff"] * 2, POLL_SECS * 2, base), MAX_BACKOFF_SECS)
+            st["next"] = now + st["backoff"]
+            last, age = st["last"], now - st["last_ts"]
+            # Fail-safe: we can't see usage. If the last good reading was close to a
+            # limit (or we already hold), keep/apply the hold rather than fly blind.
+            if last and age <= FAILSAFE_MAX_AGE_SECS and headroom(*last) <= FAILSAFE_MARGIN:
+                if not auto_held:
+                    try:
+                        set_disabled(name, True)
+                        set_auto_held(conn, email, True, last[0])
+                        log(f"{email}: HOLD on (fail-safe: usage read failed, last reading within {FAILSAFE_MARGIN:.0f}% of a limit)")
+                    except Exception as e2:
+                        log(f"{email}: failed to HOLD: {e2}")
+                else:
+                    log(f"{email}: HOLD stays (usage read failed: {e}; retry in {st['backoff']:.0f}s)")
+            else:
+                log(f"{email}: usage fetch failed: {e}; retry in {st['backoff']:.0f}s")
             continue
 
+        st["backoff"] = 0.0
+        st["last"], st["last_ts"] = (util, week, scoped), now
+        save_reading(conn, email, st["last"], now)
+        gap = headroom(util, week, scoped)
+        st["next"] = now + (SLOW_POLL_SECS if gap > 30 else POLL_SECS)
+
         touch_check(conn, email, util)
-        if util is None:
-            log(f"{email}: no five_hour utilization; skip")
+        if util is None and week is None and not scoped:
+            log(f"{email}: no utilization data; skip")
             time.sleep(0.35)
             continue
 
-        over = util >= THRESHOLD
-        if over:
+        reasons = hold_reasons(util, week, scoped)
+        why = ", ".join(reasons)
+        state = f"5h={util if util is not None else 0:.0f}%, 7d={week if week is not None else 0:.0f}%" + "".join(
+            f", 7d {m}={p:.0f}%" for m, p in scoped
+        )
+
+        if reasons:
             if auto_held:
-                log(f"{email}: HOLD stays (5h={util:.0f}% >= {THRESHOLD:.0f}%)")
+                log(f"{email}: HOLD stays ({why})")
             else:
                 try:
                     set_disabled(name, True)
                     set_auto_held(conn, email, True, util)
-                    log(f"{email}: HOLD on (5h={util:.0f}% >= {THRESHOLD:.0f}%)")
+                    log(f"{email}: HOLD on ({why})")
                 except Exception as e:
                     log(f"{email}: failed to HOLD: {e}")
         else:
@@ -306,11 +427,11 @@ def tick(conn: sqlite3.Connection) -> None:
                 try:
                     set_disabled(name, False)
                     set_auto_held(conn, email, False, util)
-                    log(f"{email}: HOLD off (5h={util:.0f}% < {THRESHOLD:.0f}%) - back in round-robin")
+                    log(f"{email}: HOLD off ({state}) - back in round-robin")
                 except Exception as e:
                     log(f"{email}: failed to release HOLD: {e}")
             elif g.get("enabled"):
-                log(f"{email}: ok (5h={util:.0f}%)")
+                log(f"{email}: ok ({state})")
 
         time.sleep(0.35)
 
