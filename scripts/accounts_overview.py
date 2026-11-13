@@ -240,7 +240,7 @@ def left(util) -> str:
 
 def live_main(rows: list[dict]) -> None:
     live = load_live()
-    headers = ["ACCOUNT", "STATUS", "LIMIT", "5H USED", "5H LEFT", "5H RESET", "7D USED", "7D LEFT", "7D RESET", "MODEL WEEKLY", "SEEN"]
+    headers = ["ACCOUNT", "STATUS", "LIMIT", "5H USED", "5H RESET", "7D USED", "7D RESET", "MODEL WEEKLY", "SEEN"]
     out = []
     for r in sorted(rows, key=lambda x: (token_group(x["mins"]), (x["email"] or "").lower())):
         d = live.get(r["email"].lower(), {})
@@ -287,8 +287,8 @@ def live_main(rows: list[dict]) -> None:
         scoped = "; ".join(f"{m} {pct(p)}{mark(p).strip()} used" for m, p in (reading.get("scoped") or [])) or "-"
         out.append([
             r["email"], r["status"], lim,
-            f"{pct(five)}{mark(five)}", left(five), reset_human(five_reset),
-            f"{pct(week)}{mark(week)}", left(week), reset_human(week_reset),
+            f"{pct(five)}{mark(five)}", reset_human(five_reset),
+            f"{pct(week)}{mark(week)}", reset_human(week_reset),
             scoped, f"{ago(seen_ts)} ({src})" if src else "no data yet",
         ])
     print_table(headers, out)
