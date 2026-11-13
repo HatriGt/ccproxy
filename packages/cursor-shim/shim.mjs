@@ -17,6 +17,64 @@ const SHIM_HOST = process.env.CURSOR_SHIM_HOST || "127.0.0.1";
 const SHIM_PORT = Number(process.env.CURSOR_SHIM_PORT || 8320);
 const UPSTREAM = process.env.CLIPROXY_UPSTREAM || "http://127.0.0.1:8318";
 
+// Burn-rate limiter: cap in-flight requests per expensive model family so one
+// agent loop can't fire dozens of parallel Fable/Opus calls and drain an
+// account's 5h window before the usage guard can react. Extra requests queue
+// (they are not rejected) until a slot frees or SHIM_QUEUE_TIMEOUT_MS passes.
+// SHIM_MODEL_CAPS="fable=2,opus=3"  (substring of the model name = max in flight; 0 = off)
+const MODEL_CAPS = (process.env.SHIM_MODEL_CAPS ?? "fable=2,opus=3")
+  .split(",")
+  .map((p) => p.split("=").map((x) => x.trim()))
+  .filter(([k, v]) => k && Number(v) > 0)
+  .map(([k, v]) => [k.toLowerCase(), Number(v)]);
+const QUEUE_TIMEOUT_MS = Number(process.env.SHIM_QUEUE_TIMEOUT_MS || 180000);
+/** @type {Map<string, {active: number, waiters: Array<() => void>}>} */
+const slots = new Map();
+
+function capFor(model) {
+  const m = String(model || "").toLowerCase();
+  for (const [key, cap] of MODEL_CAPS) if (m.includes(key)) return [key, cap];
+  return null;
+}
+
+/** Resolves to a release() function, or null if the queue wait timed out. */
+function acquire(key, cap) {
+  let s = slots.get(key);
+  if (!s) slots.set(key, (s = { active: 0, waiters: [] }));
+  const release = () => {
+    s.active--;
+    const next = s.waiters.shift();
+    if (next) next();
+  };
+  if (s.active < cap) {
+    s.active++;
+    return Promise.resolve(once(release));
+  }
+  return new Promise((resolve) => {
+    const go = () => {
+      clearTimeout(timer);
+      s.active++;
+      resolve(once(release));
+    };
+    const timer = setTimeout(() => {
+      const i = s.waiters.indexOf(go);
+      if (i >= 0) s.waiters.splice(i, 1);
+      resolve(null);
+    }, QUEUE_TIMEOUT_MS);
+    s.waiters.push(go);
+  });
+}
+
+function once(fn) {
+  let done = false;
+  return () => {
+    if (!done) {
+      done = true;
+      fn();
+    }
+  };
+}
+
 const ANTHROPIC_BLOCK_TYPES = new Set([
   "text",
   "tool_use",
@@ -455,7 +513,30 @@ function readBody(req) {
  * @param {string} targetPath
  * @param {Buffer|undefined} body
  */
-function proxyRequest(clientReq, clientRes, targetPath, body) {
+async function proxyRequest(clientReq, clientRes, targetPath, body) {
+  let release = null;
+  if (body && body.length > 0 && clientReq.method === "POST") {
+    let model = "";
+    try {
+      model = JSON.parse(body.toString("utf8")).model || "";
+    } catch {}
+    const c = capFor(model);
+    if (c) {
+      const s = slots.get(c[0]);
+      if (s && s.active >= c[1]) console.log(`[limiter] ${model}: ${s.active}/${c[1]} in flight, queued (${s.waiters.length + 1} waiting)`);
+      release = await acquire(c[0], c[1]);
+      if (!release) {
+        clientRes.writeHead(429, { "content-type": "application/json", "retry-after": "30" });
+        clientRes.end(JSON.stringify({ error: { type: "rate_limit_error", message: `ccproxy: too many concurrent ${c[0]} requests; retry shortly` } }));
+        return;
+      }
+      if (clientRes.destroyed || clientReq.socket?.destroyed) {
+        release(); // client gave up while queued
+        return;
+      }
+      clientRes.on("close", release);
+    }
+  }
   const upstreamUrl = new URL(targetPath, UPSTREAM);
   const headers = { ...clientReq.headers, host: upstreamUrl.host };
   delete headers["content-length"];

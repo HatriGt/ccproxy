@@ -78,6 +78,43 @@ def burst_tokens(conn: sqlite3.Connection, email: str, since: float) -> float:
     return total
 
 
+def signals_reading(f: dict):
+    """((5h, 7d, [(window, pct)]), observed_epoch, hard) from CLIProxyAPI's
+    per-auth quota snapshot, or None if there is no usable snapshot."""
+    q = f.get("quota") or {}
+    sig = {k.lower(): str(v) for k, v in (q.get("signals") or {}).items()}
+    obs = _parse_ts(q.get("observed_at") or "")
+    if not sig or not obs or obs < 1e9:
+        return None
+    pre = "anthropic-ratelimit-unified-"
+    util = week = None
+    scoped: list[tuple[str, float]] = []
+    hard = False
+    for k, v in sig.items():
+        if not k.startswith(pre):
+            continue
+        rest = k[len(pre):]
+        if rest.endswith("-status") or rest == "status":
+            if v.strip().lower() in ("rejected", "allowed_warning"):
+                hard = True
+        if not rest.endswith("-utilization"):
+            continue
+        win = rest[: -len("-utilization")]
+        try:
+            pct = float(v) * 100
+        except ValueError:
+            continue
+        if win == "5h":
+            util = pct
+        elif win == "7d":
+            week = pct
+        else:
+            scoped.append((win, pct))
+    if util is None and week is None and not scoped:
+        return None
+    return (util, week, scoped), obs, hard
+
+
 # email -> {"next": epoch, "backoff": secs, "last": Usage, "last_ts": epoch}
 _STATE: dict[str, dict] = {}
 _PAUSED_LOGGED: set[str] = set()
@@ -417,45 +454,57 @@ def tick(conn: sqlite3.Connection) -> None:
                 log(f"{email}: HOLD on (fail-safe: {burst:,.0f} weighted tokens since last reading, usage unreadable)")
             except Exception as e:
                 log(f"{email}: failed to HOLD: {e}")
-        if now < st["next"]:
-            if burst < BURST_POLL_TOKENS or now - st["tried"] < MIN_POLL_GAP_SECS:
+        # Live reading: CLIProxyAPI records Anthropic's anthropic-ratelimit-unified-*
+        # headers from every response it proxies. Fresh, free, no usage-API call.
+        live = signals_reading(f)
+        if live and live[1] > st["last_ts"] + 0.5:
+            (util, week, scoped), now, hard = live
+            if not scoped and st["last"]:
+                scoped = st["last"][2]  # headers lack per-model weekly; keep the API's
+            src = "live"
+            st["next"] = max(st["next"], time.time() + SLOW_POLL_SECS)
+        else:
+            hard, src = False, "api"
+            if now < st["next"]:
+                if burst < BURST_POLL_TOKENS or now - st["tried"] < MIN_POLL_GAP_SECS:
+                    continue
+                log(f"{email}: burst {burst:,.0f} weighted tokens since last reading; polling early")
+            st["tried"] = now
+
+            token = load_token(name)
+            if not token:
+                log(f"{email}: no access_token; skip")
                 continue
-            log(f"{email}: burst {burst:,.0f} weighted tokens since last reading; polling early")
-        st["tried"] = now
 
-        token = load_token(name)
-        if not token:
-            log(f"{email}: no access_token; skip")
-            continue
-
-        try:
-            util, week, scoped = fetch_util(token)
-        except Exception as e:
-            base = e.retry_after if isinstance(e, RateLimited) and e.retry_after else 0
-            st["backoff"] = min(max(st["backoff"] * 2, POLL_SECS * 2, base), MAX_BACKOFF_SECS)
-            st["next"] = now + st["backoff"]
-            last, age = st["last"], now - st["last_ts"]
-            # Fail-safe: we can't see usage. If the last good reading was close to a
-            # limit (or we already hold), keep/apply the hold rather than fly blind.
-            if last and age <= FAILSAFE_MAX_AGE_SECS and headroom(*last) <= FAILSAFE_MARGIN:
-                if not auto_held:
-                    try:
-                        set_disabled(name, True)
-                        set_auto_held(conn, email, True, last[0])
-                        log(f"{email}: HOLD on (fail-safe: usage read failed, last reading within {FAILSAFE_MARGIN:.0f}% of a limit)")
-                    except Exception as e2:
-                        log(f"{email}: failed to HOLD: {e2}")
+            try:
+                util, week, scoped = fetch_util(token)
+            except Exception as e:
+                base = e.retry_after if isinstance(e, RateLimited) and e.retry_after else 0
+                st["backoff"] = min(max(st["backoff"] * 2, POLL_SECS * 2, base), MAX_BACKOFF_SECS)
+                st["next"] = now + st["backoff"]
+                last, age = st["last"], now - st["last_ts"]
+                # Fail-safe: we can't see usage. If the last good reading was close to a
+                # limit (or we already hold), keep/apply the hold rather than fly blind.
+                if last and age <= FAILSAFE_MAX_AGE_SECS and headroom(*last) <= FAILSAFE_MARGIN:
+                    if not auto_held:
+                        try:
+                            set_disabled(name, True)
+                            set_auto_held(conn, email, True, last[0])
+                            log(f"{email}: HOLD on (fail-safe: usage read failed, last reading within {FAILSAFE_MARGIN:.0f}% of a limit)")
+                        except Exception as e2:
+                            log(f"{email}: failed to HOLD: {e2}")
+                    else:
+                        log(f"{email}: HOLD stays (usage read failed: {e}; retry in {st['backoff']:.0f}s)")
                 else:
-                    log(f"{email}: HOLD stays (usage read failed: {e}; retry in {st['backoff']:.0f}s)")
-            else:
-                log(f"{email}: usage fetch failed: {e}; retry in {st['backoff']:.0f}s")
-            continue
+                    log(f"{email}: usage fetch failed: {e}; retry in {st['backoff']:.0f}s")
+                continue
 
         st["backoff"] = 0.0
         st["last"], st["last_ts"] = (util, week, scoped), now
         save_reading(conn, email, st["last"], now)
-        gap = headroom(util, week, scoped)
-        st["next"] = now + (SLOW_POLL_SECS if gap > 30 else POLL_SECS)
+        if src == "api":
+            gap = headroom(util, week, scoped)
+            st["next"] = now + (SLOW_POLL_SECS if gap > 30 else POLL_SECS)
 
         touch_check(conn, email, util)
         if util is None and week is None and not scoped:
@@ -464,6 +513,8 @@ def tick(conn: sqlite3.Connection) -> None:
             continue
 
         reasons = hold_reasons(util, week, scoped)
+        if hard:
+            reasons.append("Anthropic status warning/rejected")
         why = ", ".join(reasons)
         state = f"5h={util if util is not None else 0:.0f}%, 7d={week if week is not None else 0:.0f}%" + "".join(
             f", 7d {m}={p:.0f}%" for m, p in scoped
@@ -490,8 +541,9 @@ def tick(conn: sqlite3.Connection) -> None:
                     log(f"{email}: HOLD off ({state}) - back in round-robin")
                 except Exception as e:
                     log(f"{email}: failed to release HOLD: {e}")
-            elif g.get("enabled"):
-                log(f"{email}: ok ({state})")
+            elif g.get("enabled") and (src == "api" or st.get("logged") != state):
+                log(f"{email}: ok ({state}) [{src}]")
+                st["logged"] = state
 
         time.sleep(0.35)
 

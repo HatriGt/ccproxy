@@ -74,6 +74,9 @@ services:
     environment:
       CURSOR_SHIM_HOST: ${CURSOR_SHIM_HOST:-0.0.0.0}
       CURSOR_SHIM_PORT: ${CURSOR_SHIM_PORT:-8320}
+      # Max in-flight requests per model family (substring=cap); extras queue.
+      SHIM_MODEL_CAPS: ${SHIM_MODEL_CAPS:-fable=2,opus=3}
+      SHIM_QUEUE_TIMEOUT_MS: ${SHIM_QUEUE_TIMEOUT_MS:-180000}
       CLIPROXY_UPSTREAM: ${CLIPROXY_UPSTREAM:-http://cli-proxy-api:8318}
     ports:
       # Traefik (Dokploy) reaches host via 172.17.0.1:8320
