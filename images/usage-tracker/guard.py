@@ -479,6 +479,9 @@ def tick(conn: sqlite3.Connection) -> None:
                     log(f"{email}: HOLD on ({why})")
                 except Exception as e:
                     log(f"{email}: failed to HOLD: {e}")
+        elif auto_held and headroom(util, week, scoped) <= FAILSAFE_MARGIN:
+            # Hysteresis: don't release while still near a limit (e.g. 7d Fable 82%).
+            log(f"{email}: HOLD stays (near a limit: {state})")
         else:
             if auto_held:
                 try:
