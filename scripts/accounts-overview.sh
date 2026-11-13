@@ -41,8 +41,15 @@ esac
 }
 
 if [ "$WATCH" = 1 ]; then
+  SECS="${OVERVIEW_WATCH_SECS:-5}"
   while true; do
-    out="$(run 2>&1)"; clear; echo "$out"; echo; echo "(refreshing every 15s - Ctrl+C to stop)"; sleep 15
+    printf '\r\033[K⟳ fetching...'
+    out="$(run 2>&1)"
+    clear; echo "$out"; echo
+    for ((i = SECS; i > 0; i--)); do
+      printf '\r\033[K⏱  next refresh in %ss  (Ctrl+C to stop)' "$i"
+      sleep 1
+    done
   done
 else
   run
