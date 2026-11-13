@@ -365,21 +365,56 @@ def hold_reasons(util, week, scoped) -> list[str]:
         reasons.append(f"5h={util:.0f}% >= {THRESHOLD:.0f}%")
     if week is not None and week >= WEEKLY_THRESHOLD:
         reasons.append(f"7d={week:.0f}% >= {WEEKLY_THRESHOLD:.0f}%")
-    for model, p in scoped:
-        if p >= SCOPED_THRESHOLD:
-            reasons.append(f"7d {model}={p:.0f}% >= {SCOPED_THRESHOLD:.0f}%")
+    # Per-model weekly limits don't hold the account; they block just that model
+    # on it (see sync_model_blocks).
     return reasons
 
 
-def headroom(util, week, scoped) -> float:
-    """Smallest gap (in %) between any reading and its threshold."""
+def headroom(util, week, scoped, include_scoped: bool = False) -> float:
+    """Smallest gap (in %) between an account-level reading and its threshold
+    (per-model weekly limits only when include_scoped)."""
     gaps = []
     if util is not None:
         gaps.append(THRESHOLD - util)
     if week is not None:
         gaps.append(WEEKLY_THRESHOLD - week)
-    gaps += [SCOPED_THRESHOLD - p for _, p in scoped]
+    if include_scoped:
+        gaps += [SCOPED_THRESHOLD - p for _, p in scoped]
     return min(gaps) if gaps else 100.0
+
+
+def set_excluded_models(name: str, patterns: list[str]) -> None:
+    mgmt("PATCH", "/auth-files/fields",
+         {"name": name, "excluded_models": patterns or None})
+
+
+def sync_model_blocks(st: dict, f: dict, email: str, name: str, scoped) -> None:
+    """Block a model family on this account while its own weekly limit is at or
+    over SCOPED_THRESHOLD; unblock once it is FAILSAFE_MARGIN below (hysteresis).
+    Uses the account's excluded_models (e.g. "*fable*"), so other models keep working."""
+    current = st.get("blocked")
+    if current is None:
+        current = {p.strip("*") for p in (f.get("excluded_models") or []) if p.startswith("*") and p.endswith("*")}
+    want = set()
+    for model, p in scoped:
+        key = model.lower().replace(" ", "-")
+        if p >= SCOPED_THRESHOLD or (key in current and p > SCOPED_THRESHOLD - FAILSAFE_MARGIN):
+            want.add(key)
+    # Families with no reading this time keep their current state.
+    seen = {m.lower().replace(" ", "-") for m, _ in scoped}
+    want |= {k for k in current if k not in seen}
+    if want == current and st.get("blocked") is not None:
+        return
+    if want != current or st.get("blocked") is None:
+        try:
+            set_excluded_models(name, sorted(f"*{k}*" for k in want))
+            st["blocked"] = want
+            for k in want - current:
+                log(f"{email}: BLOCK model *{k}* (its weekly limit is near/over {SCOPED_THRESHOLD:.0f}%); other models still allowed")
+            for k in current - want:
+                log(f"{email}: UNBLOCK model *{k}*")
+        except Exception as e:
+            log(f"{email}: failed to update excluded models: {e}")
 
 
 def resolve_file(files: list[dict], email: str) -> dict | None:
@@ -505,10 +540,11 @@ def tick(conn: sqlite3.Connection) -> None:
         st["last"], st["last_ts"] = (util, week, scoped), now
         save_reading(conn, email, st["last"], now)
         if src == "api":
-            gap = headroom(util, week, scoped)
+            gap = headroom(util, week, scoped, include_scoped=True)
             st["next"] = now + (SLOW_POLL_SECS if gap > 30 else POLL_SECS)
 
         touch_check(conn, email, util)
+        sync_model_blocks(st, f, email, name, scoped)
         if util is None and week is None and not scoped:
             log(f"{email}: no utilization data; skip")
             time.sleep(0.35)
