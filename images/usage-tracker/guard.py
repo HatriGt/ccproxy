@@ -94,7 +94,9 @@ def signals_reading(f: dict):
         if not k.startswith(pre):
             continue
         rest = k[len(pre):]
-        if rest.endswith("-status") or rest == "status":
+        # Only real limit windows (status, 5h-status, 7d-status...). Overage-Status
+        # "rejected" just means paid overage is off - not a limit hit.
+        if (rest == "status" or rest.endswith("-status")) and not rest.startswith("overage"):
             if v.strip().lower() in ("rejected", "allowed_warning"):
                 hard = True
         if not rest.endswith("-utilization"):
