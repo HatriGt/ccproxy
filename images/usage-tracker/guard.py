@@ -43,8 +43,44 @@ MAX_BACKOFF_SECS = int(os.environ.get("GUARD_MAX_BACKOFF_SECS", "900"))
 FAILSAFE_MARGIN = float(os.environ.get("GUARD_FAILSAFE_MARGIN", "10"))
 FAILSAFE_MAX_AGE_SECS = int(os.environ.get("GUARD_FAILSAFE_MAX_AGE_SECS", "3600"))
 
+# Burst trigger: between polls, watch this account's own traffic in the usage
+# table. Weighted tokens = input + 5*output + 0.1*cache-read (roughly cost).
+# A Fable/Opus agent loop can burn ~60% of a 5h window in 3 minutes, so a big
+# burst forces an early poll; a huge one with no usable reading forces a hold.
+BURST_POLL_TOKENS = int(os.environ.get("GUARD_BURST_POLL_TOKENS", "60000"))
+BURST_HOLD_TOKENS = int(os.environ.get("GUARD_BURST_HOLD_TOKENS", "400000"))
+MIN_POLL_GAP_SECS = int(os.environ.get("GUARD_MIN_POLL_GAP_SECS", "20"))
+
+
+def _parse_ts(ts: str) -> float | None:
+    import re
+    from datetime import datetime
+    ts = re.sub(r"(\.\d{6})\d+", r"\1", ts.replace("Z", "+00:00"))
+    try:
+        return datetime.fromisoformat(ts).timestamp()
+    except ValueError:
+        return None
+
+
+def burst_tokens(conn: sqlite3.Connection, email: str, since: float) -> float:
+    """Weighted tokens this account served since epoch `since`."""
+    total = 0.0
+    rows = conn.execute(
+        "SELECT ts, input_tokens, output_tokens, cached_tokens FROM usage "
+        "WHERE source = ? ORDER BY rowid DESC LIMIT 5000",
+        (email,),
+    )
+    for ts, inp, out, cached in rows:
+        t = _parse_ts(ts or "")
+        if t is None or t < since:
+            break
+        total += (inp or 0) + 5 * (out or 0) + 0.1 * (cached or 0)
+    return total
+
+
 # email -> {"next": epoch, "backoff": secs, "last": Usage, "last_ts": epoch}
 _STATE: dict[str, dict] = {}
+_PAUSED_LOGGED: set[str] = set()
 
 
 def log(msg: str) -> None:
@@ -354,17 +390,38 @@ def tick(conn: sqlite3.Connection) -> None:
 
         # High-level PAUSE: never touch routing; do not convert to HOLD.
         if disabled and not auto_held:
-            log(f"{email}: manually PAUSED (high-level); guard skips")
+            if email not in _PAUSED_LOGGED:
+                log(f"{email}: manually PAUSED (high-level); guard skips")
+                _PAUSED_LOGGED.add(email)
             time.sleep(0.2)
             continue
 
+        _PAUSED_LOGGED.discard(email)
         st = _STATE.get(email)
         if st is None:
             last, last_ts = load_reading(conn, email)
-            st = _STATE[email] = {"next": 0.0, "backoff": 0.0, "last": last, "last_ts": last_ts}
+            st = _STATE[email] = {"next": 0.0, "backoff": 0.0, "last": last, "last_ts": last_ts, "tried": 0.0}
         now = time.time()
+        burst = 0.0
+        if st["last_ts"]:
+            try:
+                burst = burst_tokens(conn, email, st["last_ts"])
+            except Exception as e:
+                log(f"{email}: burst check failed: {e}")
+        # Huge burst since the last good reading and still not polled: hold first.
+        if burst >= BURST_HOLD_TOKENS and not auto_held and now - st["last_ts"] >= MIN_POLL_GAP_SECS and st["backoff"]:
+            try:
+                set_disabled(name, True)
+                set_auto_held(conn, email, True, st["last"][0] if st["last"] else None)
+                auto_held = True
+                log(f"{email}: HOLD on (fail-safe: {burst:,.0f} weighted tokens since last reading, usage unreadable)")
+            except Exception as e:
+                log(f"{email}: failed to HOLD: {e}")
         if now < st["next"]:
-            continue
+            if burst < BURST_POLL_TOKENS or now - st["tried"] < MIN_POLL_GAP_SECS:
+                continue
+            log(f"{email}: burst {burst:,.0f} weighted tokens since last reading; polling early")
+        st["tried"] = now
 
         token = load_token(name)
         if not token:

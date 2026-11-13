@@ -20,6 +20,8 @@ DB_PATH = os.environ.get("USAGE_DB_PATH", "/data/usage/usage.db")
 POLL_SECS = int(os.environ.get("USAGE_POLL_SECS", "15"))
 BATCH = int(os.environ.get("USAGE_BATCH", "200"))
 GUARD_POLL_SECS = int(os.environ.get("GUARD_POLL_SECS", "60"))
+# How often the guard loop wakes (each account still has its own poll schedule).
+GUARD_TICK_SECS = int(os.environ.get("GUARD_TICK_SECS", "15"))
 
 QUEUE_URL = f"{UPSTREAM}/v0/management/usage-queue?count={BATCH}"
 
@@ -130,7 +132,7 @@ def main():
                 guard.tick(conn)
             except Exception as e:
                 log(f"guard tick error: {e}")
-            next_guard = now + GUARD_POLL_SECS
+            next_guard = now + GUARD_TICK_SECS
 
         time.sleep(POLL_SECS)
 
