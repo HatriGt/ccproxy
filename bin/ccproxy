@@ -52,6 +52,8 @@ Commands:
   env             Show key settings
   accounts, acc   Claude account status (active/paused/hold/expired)
   overview, ov    Accounts + plan limits in one table (no day-wise tokens)
+                  --live  live usage from proxied responses (no usage-API calls)
+                  --watch same, refreshing every 15s
   guard           5h auto-hold opt-in: guard list|on|off <email>
   pause           Manual exclude from round-robin: pause <email-or-substring>
   resume          Put account back in round-robin: resume <email-or-substring>

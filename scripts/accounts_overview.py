@@ -16,6 +16,7 @@ import urllib.error
 import urllib.request
 from datetime import datetime, timezone
 
+LIVE = "--live" in sys.argv[1:]
 USAGE_URL = "https://api.anthropic.com/api/oauth/usage"
 HEADERS_EXTRA = {
     "Content-Type": "application/json",
@@ -160,6 +161,146 @@ def load_guards() -> dict[str, dict]:
     except Exception:
         return {}
 
+LIVE_CODE = r"""
+import json,os,sqlite3,urllib.request as u
+out={}
+try:
+    r=u.Request("http://cli-proxy-api:8318/v0/management/auth-files",
+                headers={"Authorization":"Bearer "+os.environ.get("CLIPROXY_MGMT_KEY","")})
+    for f in json.load(u.urlopen(r,timeout=10)).get("files",[]):
+        e=(f.get("email") or "").lower()
+        if e: out[e]={"quota":f.get("quota") or {}}
+except Exception as ex:
+    out["__error__"]=str(ex)
+try:
+    c=sqlite3.connect(os.environ.get("USAGE_DB_PATH","/data/usage/usage.db"))
+    for e,lr,ts in c.execute("SELECT email,last_reading,last_reading_ts FROM account_guard"):
+        d=out.setdefault(e.lower(),{})
+        d["reading"]=json.loads(lr) if lr else None
+        d["reading_ts"]=ts
+except Exception:
+    pass
+print(json.dumps(out))
+"""
+
+
+def load_live() -> dict:
+    """Per-account live quota snapshot (from response headers) + guard's last reading.
+    Makes no call to Anthropic, so it never trips the usage-API rate limit."""
+    tracker = _tracker_name()
+    if not tracker:
+        return {}
+    try:
+        raw = subprocess.check_output(
+            ["docker", "exec", tracker, "python3", "-c", LIVE_CODE], text=True, stderr=subprocess.DEVNULL
+        ).strip()
+        return json.loads(raw or "{}")
+    except Exception:
+        return {}
+
+
+def _tracker_name() -> str:
+    project = os.environ.get("CCPROXY_PROJECT", "")
+    args = ["docker", "ps", "--format", "{{.Names}}"]
+    if project:
+        args[2:2] = ["--filter", f"label=com.docker.compose.project={project}"]
+    try:
+        for name in sh(*args).splitlines():
+            if "usage-tracker" in name:
+                return name
+    except Exception:
+        pass
+    return ""
+
+
+def ago(ts: float | None) -> str:
+    if not ts:
+        return "-"
+    s = int(time.time() - ts)
+    if s < 90:
+        return f"{s}s ago"
+    if s < 5400:
+        return f"{s // 60}m ago"
+    return f"{s / 3600:.1f}h ago"
+
+
+def epoch_iso(v) -> str | None:
+    try:
+        return datetime.fromtimestamp(float(v), timezone.utc).isoformat()
+    except Exception:
+        return None
+
+
+def left(util) -> str:
+    try:
+        return f"{max(0, 100 - int(round(float(util))))}% left"
+    except Exception:
+        return "-"
+
+
+def live_main(rows: list[dict]) -> None:
+    live = load_live()
+    headers = ["ACCOUNT", "STATUS", "LIMIT", "5H USED", "5H LEFT", "5H RESET", "7D USED", "7D LEFT", "7D RESET", "MODEL WEEKLY", "SEEN"]
+    out = []
+    for r in sorted(rows, key=lambda x: (token_group(x["mins"]), (x["email"] or "").lower())):
+        d = live.get(r["email"].lower(), {})
+        sig = {k.lower(): v for k, v in ((d.get("quota") or {}).get("signals") or {}).items()}
+        pre = "anthropic-ratelimit-unified-"
+        reading = d.get("reading") or {}
+        five = week = None
+        five_reset = week_reset = None
+        seen_ts = None
+        src = ""
+        if sig:
+            try:
+                five = float(sig.get(pre + "5h-utilization")) * 100
+            except (TypeError, ValueError):
+                pass
+            try:
+                week = float(sig.get(pre + "7d-utilization")) * 100
+            except (TypeError, ValueError):
+                pass
+            five_reset = epoch_iso(sig.get(pre + "5h-reset"))
+            week_reset = epoch_iso(sig.get(pre + "7d-reset"))
+            obs = (d.get("quota") or {}).get("observed_at") or ""
+            try:
+                import re
+                seen_ts = datetime.fromisoformat(re.sub(r"(\.\d{6})\d+", r"\1", obs)).timestamp()
+            except Exception:
+                seen_ts = None
+            src = "live"
+        # Fall back to / prefer the guard's newer reading (usage API or live).
+        rts = d.get("reading_ts") or 0
+        if reading and (seen_ts is None or rts > seen_ts):
+            five = reading.get("five_hour", five)
+            week = reading.get("seven_day", week)
+            seen_ts, src = rts, "guard"
+        statuses = [sig.get(pre + k, "") for k in ("5h-status", "7d-status", "status")]
+        if any(x == "rejected" for x in statuses):
+            lim = "REJECTED"
+        elif any(x == "allowed_warning" for x in statuses):
+            lim = "WARNING"
+        elif sig or reading:
+            lim = "allowed"
+        else:
+            lim = "-"
+        scoped = "; ".join(f"{m} {pct(p)}{mark(p).strip()} used" for m, p in (reading.get("scoped") or [])) or "-"
+        out.append([
+            r["email"], r["status"], lim,
+            f"{pct(five)}{mark(five)}", left(five), reset_human(five_reset),
+            f"{pct(week)}{mark(week)}", left(week), reset_human(week_reset),
+            scoped, f"{ago(seen_ts)} ({src})" if src else "no data yet",
+        ])
+    print_table(headers, out)
+    print()
+    print("Live mode: no Anthropic usage-API calls. Data = rate-limit headers from the")
+    print("account's latest proxied response (live) or the guard's last reading (guard).")
+    print("LIMIT = Anthropic status on that response. ~ = >=75%  ! = >=90%")
+    print("Accounts with no recent traffic show the guard's last reading; MODEL WEEKLY comes from it.")
+    if "__error__" in live:
+        print("WARN: management API: " + live["__error__"])
+
+
 def human_mins(mins: float | None) -> str:
     if mins is None:
         return "-"
@@ -274,7 +415,9 @@ def main() -> int:
         auto_held = bool(g.get("auto_held")) if g else False
         status, action = account_status(disabled, mins, auto_held)
         token = data.get("access_token") or ""
-        if not token:
+        if LIVE:
+            code, body = 0, {}
+        elif not token:
             code, body = 0, {"error": {"message": "missing access_token"}}
         else:
             code, body = fetch_usage(token)
@@ -291,6 +434,10 @@ def main() -> int:
                 "auto_held": auto_held,
             }
         )
+
+    if LIVE:
+        live_main(rows)
+        return 0
 
     headers = ["ACCOUNT", "STATUS", "GUARD", "TOKEN", "5-HOUR", "5H RESET", "WEEKLY", "WEEK / NOTE"]
     table_rows: list[list[str]] = []
@@ -368,7 +515,7 @@ def main() -> int:
     print()
     print("STATUS/TOKEN = OAuth routing + access-token TTL (~8h, auto-refreshed).")
     print("5-HOUR/WEEKLY = Anthropic plan usage (Claude Settings -> Usage).")
-    print("PAUSED = high-level gate (ccproxy pause). GUARD = inner 5h auto-HOLD (>=92%).")
+    print("PAUSED = high-level gate (ccproxy pause). GUARD = auto-HOLD at 85% (5h/weekly/model).")
     print("~ = >=75%   ! = >=90%    Day-wise tokens: ccproxy stats")
 
     if guarded:
