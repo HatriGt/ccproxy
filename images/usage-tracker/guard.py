@@ -97,7 +97,7 @@ def signals_reading(f: dict):
         # Only real limit windows (status, 5h-status, 7d-status...). Overage-Status
         # "rejected" just means paid overage is off - not a limit hit.
         if (rest == "status" or rest.endswith("-status")) and not rest.startswith("overage"):
-            if v.strip().lower() in ("rejected", "allowed_warning"):
+            if v.strip().lower() == "rejected":  # allowed_warning fires at 75% - just a notice
                 hard = True
         if not rest.endswith("-utilization"):
             continue
@@ -552,7 +552,7 @@ def tick(conn: sqlite3.Connection) -> None:
 
         reasons = hold_reasons(util, week, scoped)
         if hard:
-            reasons.append("Anthropic status warning/rejected")
+            reasons.append("Anthropic status rejected")
         why = ", ".join(reasons)
         state = f"5h={util if util is not None else 0:.0f}%, 7d={week if week is not None else 0:.0f}%" + "".join(
             f", 7d {m}={p:.0f}%" for m, p in scoped
