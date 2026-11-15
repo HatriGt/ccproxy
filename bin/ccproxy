@@ -54,7 +54,8 @@ Commands:
   overview, ov    Accounts + plan limits in one table (no day-wise tokens)
                   --live  live usage from proxied responses (no usage-API calls)
                   --watch same, auto-refresh with countdown (OVERVIEW_WATCH_SECS, default 5)
-  guard           5h auto-hold opt-in: guard list|on|off <email>
+  guard           auto-hold: guard list|on|off <email>
+                  guard limits | set <5h|weekly|model|5h-buffer|weekly-buffer> <pct> | reset
   pause           Manual exclude from round-robin: pause <email-or-substring>
   resume          Put account back in round-robin: resume <email-or-substring>
   limits          Claude plan limits (5-hour + weekly) per account

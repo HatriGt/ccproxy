@@ -438,7 +438,35 @@ def resolve_file(files: list[dict], email: str) -> dict | None:
     return hits[0] if len(hits) == 1 else None
 
 
+# Settings changeable at runtime via `ccproxy guard set ...` (guard_settings table).
+SETTING_VARS = {
+    "5h": "THRESHOLD",
+    "weekly": "WEEKLY_THRESHOLD",
+    "model": "SCOPED_THRESHOLD",
+    "5h-buffer": "FAILSAFE_MARGIN",
+    "weekly-buffer": "WEEKLY_MARGIN",
+}
+_ENV_DEFAULTS: dict[str, float] = {}
+
+
+def load_settings(conn: sqlite3.Connection) -> None:
+    g = globals()
+    if not _ENV_DEFAULTS:
+        _ENV_DEFAULTS.update({k: g[v] for k, v in SETTING_VARS.items()})
+    conn.execute("CREATE TABLE IF NOT EXISTS guard_settings (key TEXT PRIMARY KEY, value REAL NOT NULL)")
+    saved = dict(conn.execute("SELECT key, value FROM guard_settings").fetchall())
+    for k, var in SETTING_VARS.items():
+        new = float(saved.get(k, _ENV_DEFAULTS[k]))
+        if g[var] != new:
+            log(f"setting {k} = {new:g} (was {g[var]:g})")
+            g[var] = new
+
+
 def tick(conn: sqlite3.Connection) -> None:
+    try:
+        load_settings(conn)
+    except Exception as e:
+        log(f"settings load failed: {e}")
     if not MGMT_KEY:
         return
     if not AUTH_DIR.is_dir():

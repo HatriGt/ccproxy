@@ -7,6 +7,9 @@
 - Manual `pause` always wins: PAUSED accounts never enter round-robin.
 
 Usage:
+  account_guard.py limits                 show hold limits
+  account_guard.py set <what> <percent>   what = 5h | weekly | model | 5h-buffer | weekly-buffer
+  account_guard.py reset                  back to defaults
   account_guard.py list
   account_guard.py on  <email-or-substring>
   account_guard.py off <email-or-substring>
@@ -142,6 +145,19 @@ elif op == "set":
     row = conn.execute("SELECT enabled, auto_held FROM account_guard WHERE email=?", (email,)).fetchone()
     conn.commit()
     print(json.dumps({"email": email, "enabled": bool(row[0]), "auto_held": bool(row[1])}))
+elif op == "settings":
+    conn.execute("CREATE TABLE IF NOT EXISTS guard_settings (key TEXT PRIMARY KEY, value REAL NOT NULL)")
+    if cfg.get("reset"):
+        conn.execute("DELETE FROM guard_settings")
+    if cfg.get("key"):
+        conn.execute("INSERT INTO guard_settings (key, value) VALUES (?, ?) "
+                     "ON CONFLICT(key) DO UPDATE SET value=excluded.value", (cfg["key"], float(cfg["value"])))
+    conn.commit()
+    saved = dict(conn.execute("SELECT key, value FROM guard_settings").fetchall())
+    env = {"5h": os.environ.get("GUARD_FIVEHOUR_PCT", "85"), "weekly": os.environ.get("GUARD_WEEKLY_PCT", "95"),
+           "model": os.environ.get("GUARD_SCOPED_PCT", "95"), "5h-buffer": os.environ.get("GUARD_FAILSAFE_MARGIN", "10"),
+           "weekly-buffer": os.environ.get("GUARD_WEEKLY_MARGIN", "3")}
+    print(json.dumps({k: [float(saved.get(k, v)), k in saved] for k, v in env.items()}))
 elif op == "clear_hold":
     email = cfg["email"].lower()
     conn.execute(
@@ -218,6 +234,22 @@ def print_list(guards: list[dict], files: list[dict]) -> None:
     print("Toggle:     ccproxy guard on|off <email>")
 
 
+def print_limits(cfg: dict) -> None:
+    v = {k: x[0] for k, x in cfg.items()}
+    star = {k: (" *" if x[1] else "") for k, x in cfg.items()}
+    print("Guard limits")
+    print(f"  5-hour usage        hold at {v['5h']:g}%{star['5h']}")
+    print(f"  weekly usage        hold at {v['weekly']:g}%{star['weekly']}")
+    print(f"  one model's weekly  block that model at {v['model']:g}%{star['model']}")
+    print()
+    print("Safety buffer (hold stays on until usage drops below this):")
+    print(f"  5-hour              {v['5h'] - v['5h-buffer']:g}%  (buffer {v['5h-buffer']:g}){star['5h-buffer']}")
+    print(f"  weekly / model      {v['weekly'] - v['weekly-buffer']:g}% / {v['model'] - v['weekly-buffer']:g}%  (buffer {v['weekly-buffer']:g}){star['weekly-buffer']}")
+    print()
+    print("Change:  ccproxy guard set 5h 90 | set weekly 95 | set model 95 | set 5h-buffer 10 | set weekly-buffer 3")
+    print("Reset:   ccproxy guard reset        (* = changed from default)")
+
+
 def main() -> None:
     if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help", "help"):
         print(__doc__.strip())
@@ -225,6 +257,27 @@ def main() -> None:
 
     action = sys.argv[1].lower()
     query = " ".join(sys.argv[2:]).strip() if len(sys.argv) > 2 else ""
+
+    if action in ("limits", "set", "reset"):
+        tracker = find_container("usage-tracker")
+        payload = {"op": "settings"}
+        if action == "set":
+            keys = ("5h", "weekly", "model", "5h-buffer", "weekly-buffer")
+            if len(sys.argv) != 4 or sys.argv[2].lower() not in keys:
+                raise SystemExit("usage: ccproxy guard set <5h|weekly|model|5h-buffer|weekly-buffer> <percent>")
+            try:
+                val = float(sys.argv[3].rstrip("%"))
+            except ValueError:
+                raise SystemExit("ERROR: percent must be a number, e.g. 90")
+            if not 0 <= val <= 100:
+                raise SystemExit("ERROR: percent must be 0-100")
+            payload.update(key=sys.argv[2].lower(), value=val)
+        if action == "reset":
+            payload["reset"] = True
+        print_limits(db_call(tracker, payload))
+        if action != "limits":
+            print("\nSaved. The guard picks this up within ~15 seconds (no redeploy).")
+        return
 
     api = find_container("cli-proxy-api")
     tracker = find_container("usage-tracker")
