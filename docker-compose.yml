@@ -52,6 +52,9 @@ services:
       GUARD_FIVEHOUR_PCT: ${GUARD_FIVEHOUR_PCT:-85}
       GUARD_WEEKLY_PCT: ${GUARD_WEEKLY_PCT:-95}
       GUARD_SCOPED_PCT: ${GUARD_SCOPED_PCT:-95}
+      # Safety margins (points below the limit): fail-safe hold + release point.
+      GUARD_FAILSAFE_MARGIN: ${GUARD_FAILSAFE_MARGIN:-10}
+      GUARD_WEEKLY_MARGIN: ${GUARD_WEEKLY_MARGIN:-3}
       GUARD_POLL_SECS: ${GUARD_POLL_SECS:-60}
       CLIPROXY_AUTH_DIR: /data/auth
     volumes:
