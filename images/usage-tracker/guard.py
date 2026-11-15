@@ -32,8 +32,8 @@ AUTH_DIR = Path(os.environ.get("CLIPROXY_AUTH_DIR", "/data/auth"))
 UPSTREAM = os.environ.get("CLIPROXY_UPSTREAM", "http://cli-proxy-api:8318").rstrip("/")
 MGMT_KEY = os.environ.get("CLIPROXY_MGMT_KEY", "")
 THRESHOLD = float(os.environ.get("GUARD_FIVEHOUR_PCT", "85"))
-WEEKLY_THRESHOLD = float(os.environ.get("GUARD_WEEKLY_PCT", "85"))
-SCOPED_THRESHOLD = float(os.environ.get("GUARD_SCOPED_PCT", "85"))
+WEEKLY_THRESHOLD = float(os.environ.get("GUARD_WEEKLY_PCT", "95"))
+SCOPED_THRESHOLD = float(os.environ.get("GUARD_SCOPED_PCT", "95"))
 POLL_SECS = int(os.environ.get("GUARD_POLL_SECS", "60"))
 # Anthropic rate-limits the usage endpoint, so each account is polled on its own
 # schedule: often when close to a limit, rarely when far from it, with backoff on
@@ -41,6 +41,17 @@ POLL_SECS = int(os.environ.get("GUARD_POLL_SECS", "60"))
 SLOW_POLL_SECS = int(os.environ.get("GUARD_SLOW_POLL_SECS", "300"))
 MAX_BACKOFF_SECS = int(os.environ.get("GUARD_MAX_BACKOFF_SECS", "900"))
 FAILSAFE_MARGIN = float(os.environ.get("GUARD_FAILSAFE_MARGIN", "10"))
+# Weekly usage moves slowly, so its safety margin is much smaller than the 5h one.
+# (With a 10-point margin, an account at 86% weekly vs a 95% limit stayed held
+# until the weekly reset.)
+WEEKLY_MARGIN = float(os.environ.get("GUARD_WEEKLY_MARGIN", "3"))
+
+
+def near_limit(util, week) -> bool:
+    """True if 5h is within FAILSAFE_MARGIN or weekly within WEEKLY_MARGIN of its threshold."""
+    return (util is not None and util > THRESHOLD - FAILSAFE_MARGIN) or (
+        week is not None and week > WEEKLY_THRESHOLD - WEEKLY_MARGIN
+    )
 FAILSAFE_MAX_AGE_SECS = int(os.environ.get("GUARD_FAILSAFE_MAX_AGE_SECS", "3600"))
 
 # Burst trigger: between polls, watch this account's own traffic in the usage
@@ -390,7 +401,7 @@ def set_excluded_models(name: str, patterns: list[str]) -> None:
 
 def sync_model_blocks(st: dict, f: dict, email: str, name: str, scoped) -> None:
     """Block a model family on this account while its own weekly limit is at or
-    over SCOPED_THRESHOLD; unblock once it is FAILSAFE_MARGIN below (hysteresis).
+    over SCOPED_THRESHOLD; unblock once it is WEEKLY_MARGIN below (hysteresis).
     Uses the account's excluded_models (e.g. "*fable*"), so other models keep working."""
     current = st.get("blocked")
     if current is None:
@@ -398,7 +409,7 @@ def sync_model_blocks(st: dict, f: dict, email: str, name: str, scoped) -> None:
     want = set()
     for model, p in scoped:
         key = model.lower().replace(" ", "-")
-        if p >= SCOPED_THRESHOLD or (key in current and p > SCOPED_THRESHOLD - FAILSAFE_MARGIN):
+        if p >= SCOPED_THRESHOLD or (key in current and p > SCOPED_THRESHOLD - WEEKLY_MARGIN):
             want.add(key)
     # Families with no reading this time keep their current state.
     seen = {m.lower().replace(" ", "-") for m, _ in scoped}
@@ -522,12 +533,12 @@ def tick(conn: sqlite3.Connection) -> None:
                 last, age = st["last"], now - st["last_ts"]
                 # Fail-safe: we can't see usage. If the last good reading was close to a
                 # limit (or we already hold), keep/apply the hold rather than fly blind.
-                if last and age <= FAILSAFE_MAX_AGE_SECS and headroom(*last) <= FAILSAFE_MARGIN:
+                if last and age <= FAILSAFE_MAX_AGE_SECS and near_limit(last[0], last[1]):
                     if not auto_held:
                         try:
                             set_disabled(name, True)
                             set_auto_held(conn, email, True, last[0])
-                            log(f"{email}: HOLD on (fail-safe: usage read failed, last reading within {FAILSAFE_MARGIN:.0f}% of a limit)")
+                            log(f"{email}: HOLD on (fail-safe: usage read failed, last reading near a limit)")
                         except Exception as e2:
                             log(f"{email}: failed to HOLD: {e2}")
                     else:
@@ -568,7 +579,7 @@ def tick(conn: sqlite3.Connection) -> None:
                     log(f"{email}: HOLD on ({why})")
                 except Exception as e:
                     log(f"{email}: failed to HOLD: {e}")
-        elif auto_held and headroom(util, week, scoped) <= FAILSAFE_MARGIN:
+        elif auto_held and near_limit(util, week):
             # Hysteresis: don't release while still near a limit (e.g. 7d Fable 82%).
             log(f"{email}: HOLD stays (near a limit: {state})")
         else:

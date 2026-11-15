@@ -12,6 +12,9 @@
   usage-API calls; **`--watch`** refreshes it with a countdown
   (`OVERVIEW_WATCH_SECS`, default 5).
 - CLIProxyAPI upstream bumped to **v8.0.72**.
+- **Smaller weekly safety margin (3 points, `GUARD_WEEKLY_MARGIN`)**: with the old
+  10-point margin, an account at 86% weekly against a 95% limit stayed held until
+  the weekly reset. The 5-hour margin stays 10.
 
 ### How a hold happens
 
@@ -34,10 +37,10 @@
    | Anthropic status `rejected` | — | whole account on HOLD |
 
 4. **Usage can't be read** (rate-limited) → HOLD to be safe if the last reading
-   was within 10% of a limit or a big token spike happened since; otherwise retry later.
+   was near a limit (5-hour within 10 points, weekly within 3) or a big token spike happened since; otherwise retry later.
 5. **While held** — the account is out of rotation; other accounts take traffic.
-6. **Release** — only after a successful reading 10 points below the limit
-   (5-hour < 75%, weekly < 85%). A failed check never releases a hold.
+6. **Release** — only after a successful reading below the safety margin
+   (5-hour < 75%, weekly < 92%). A failed check never releases a hold.
 
 ## 2026-11-13 — usage guard hardening
 
