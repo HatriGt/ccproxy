@@ -12,6 +12,9 @@
   usage-API calls; **`--watch`** refreshes it with a countdown
   (`OVERVIEW_WATCH_SECS`, default 5).
 - CLIProxyAPI upstream bumped to **v8.0.72**.
+- **`ccproxy guard limits | set <5h|weekly|model|5h-buffer|weekly-buffer> <pct> | reset`**
+  changes hold limits and safety buffers at runtime (stored in the usage DB,
+  picked up within ~15s, no redeploy; overrides env defaults).
 - **Smaller weekly safety margin (3 points, `GUARD_WEEKLY_MARGIN`)**: with the old
   10-point margin, an account at 86% weekly against a 95% limit stayed held until
   the weekly reset. The 5-hour margin stays 10.
