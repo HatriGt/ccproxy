@@ -1,5 +1,5 @@
 # Pinned upstream CLIProxyAPI — OAuth + Claude via subscription login.
-ARG CLIPROXY_UPSTREAM_TAG=v8.1.2
+ARG CLIPROXY_UPSTREAM_TAG=v8.1.4
 FROM eceasy/cli-proxy-api:${CLIPROXY_UPSTREAM_TAG}
 
 # Env-templated config + entrypoint that renders it at start (logging toggles
